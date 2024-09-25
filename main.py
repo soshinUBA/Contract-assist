@@ -1,8 +1,12 @@
 from openai import OpenAI
 import pdfplumber
 import docx
+from dotenv import load_dotenv
+import os
 
-pdf_documents = ["./M00209635.pdf"]
+load_dotenv(".env")
+
+pdf_documents = ["./Contracts/M00217189.pdf","./Contracts/M00217189_addendum.pdf"]
 word_doc = "./FAQ document.docx"
 all_text = ""
 faq_doc = ""
@@ -23,8 +27,6 @@ for table in doc.tables:
 print(faq_doc)
 
 print("############# Starting PDF  Processing ######################")
-
-
 
 # Open the PDF file
 for pdf_document in pdf_documents:
@@ -56,11 +58,12 @@ for pdf_document in pdf_documents:
 # Output the extracted text and table data
 print(all_text)
 
+print("############# Starting Openai Processing ######################")
 
-api_key = "sk-monotypeserviceaccount1-Sl9Ip87qn9fbJOdAgE4jT3BlbkFJaQ9we33NEBuZsgCbTRPO"
+
 
 client = OpenAI(
-  api_key=api_key  # this is also the default, it can be omitted
+  api_key=os.getenv("openai-api-key")  # this is also the default, it can be omitted
 )
 
 completion = client.chat.completions.create(
@@ -143,4 +146,5 @@ completion = client.chat.completions.create(
     ]
 )
 
-# print(completion.choices[0].message)
+message = completion.choices[0].message.content
+print(message)
