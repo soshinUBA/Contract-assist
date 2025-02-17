@@ -6,13 +6,16 @@ import os
 import pandas as pd
 import unicodedata
 import regex as re
+from llama_parse import LlamaParse
 
 load_dotenv(".env")
+os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
 
-pdf_documents = ["./Contracts/OnlyOneContract/M00214352 .pdf"]
-word_doc = "./FAQ_document_contract_value.docx"
+pdf_documents = ["./Contracts/test/COMPLETED Cricut, Inc  Other 04 06 2022.pdf", "./Contracts/test/COMPLETED Cricut, Inc  Other 04 06 2022 (1).pdf"]
+word_doc = "./FAQ_document_updated.docx"
 all_text = ""
 faq_doc = ""
+parser = LlamaParse(result_type="markdown")
 
 # Load the .docx file
 doc = docx.Document(word_doc)
@@ -32,36 +35,51 @@ with open("faq.txt", "w") as f:
  
 print("############# Starting PDF  Processing ######################")
 
+# for pdf_document in pdf_documents:
+#     document = parser.load_data(pdf_document)  # Process PDF with LlamaParse
+#     all_text += "\n\n".join([doc.text for doc in document])
+
+
+
 # Open the PDF file
 for pdf_document in pdf_documents:
-    # Open the PDF file
     with pdfplumber.open(pdf_document) as pdf:
         for page in pdf.pages:
-            # Extract text from the page
             text = page.extract_text()
             if text:
-                all_text += text + "\n"  # Append the text and add a newline
+                lines = text.split("\n")
+                for line in lines:
+                    line = line.strip()
 
+                    # Convert potential headers (short uppercase lines)
+                    if len(line) < 50 and line.isupper():
+                        all_text += f"## {line}\n\n"
+                    elif line.startswith("- ") or line.startswith("* "):
+                        all_text += f"{line}\n"
+                    elif ":" in line:  # Bold key-value pairs
+                        key, value = line.split(":", 1)
+                        all_text += f"**{key.strip()}**: {value.strip()}\n\n"
+                    else:
+                        all_text += f"{line}  \n"  # Ensuring Markdown line breaks
+            
             # Extract tables (if any) from the page
             tables = page.extract_tables()
             for table in tables:
-                # Dynamically generate the header and separator based on the number of columns
-                if table and len(table[0]) > 0:  # Ensure the table has at least one row
-                    num_columns = len(table[0])
-                    header = " | ".join([f"Column {i + 1}" for i in range(num_columns)])
-                    separator = " | ".join(["---"] * num_columns)
+                if table and len(table[0]) > 0:
+                    # Fix: Handle None values in header
+                    header = " | ".join([str(cell) if cell is not None else "" for cell in table[0]])
+                    separator = " | ".join(["---"] * len(table[0]))
 
-                    # Append the header and separator to the output
-                    all_text += f"{header}\n{separator}\n"
+                    all_text += f"\n{header}\n{separator}\n"
 
-                    # Append each row of the table
-                    for row in table:
-                        formatted_row = " | ".join([cell if cell else "" for cell in row])
+                    for row in table[1:]:  # Skip header row
+                        # Fix: Handle None values in table rows
+                        formatted_row = " | ".join([str(cell) if cell is not None else "" for cell in row])
                         all_text += f"{formatted_row}\n"
 
-with open("contract_b4.txt", "w", encoding="utf-8") as f:
+with open("contract_b4.md", "w", encoding="utf-8") as f:
     f.write(all_text)
-
+    print(all_text)
 def clean_excess(text):
     """
     This function removes any extra lines or names following the extracted customer name.
@@ -257,13 +275,14 @@ elif re.search(r"Name:\s*([A-Za-z\s\.]+)\s*(?=Name:)", all_text, re.DOTALL):
 
 else:
     print("Customer name not found.")
-    # customer_name = "BitSight Technologies, Inc"
-    # new_name = "Blessing Company Ltd"
-    # all_text_normalized = re.sub(r'([a-zA-Z])\s*\n\s*([a-zA-Z])', r'\1 \2', all_text)
-    # all_text_normalized = all_text_normalized.replace(customer_name, new_name)
-    # all_text = all_text_normalized
-    # run_open_ai = True
-    run_open_ai = False
+    customer_name = "Delta Innovations Triple"
+    new_name = "Blessing Company Ltd"
+
+    # Normalize line breaks (fixing words split by newlines)
+    all_text_normalized = re.sub(r'([a-zA-Z])\s*\n\s*([a-zA-Z])', r'\1 \2', all_text)
+
+    all_text_normalized = all_text_normalized.replace(customer_name, new_name)
+    # run_open_ai = False
 
 with open("contractb4Email.txt", "w", encoding="utf-8") as f:
     f.write(all_text)
@@ -366,11 +385,13 @@ print("############# Starting Openai Processing ######################")
 
 if run_open_ai:
     client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")  # this is also the default, it can be omitted
+    api_key=os.getenv("openai-api-key")  # this is also the default, it can be omitted
     )
 
     completion = client.chat.completions.create(
         model="gpt-4o",
+        temperature=0,
+        max_tokens=3500,
         messages=[
             {"role": "system", "content": """
                 YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS. 
@@ -403,7 +424,7 @@ if run_open_ai:
                 Do not guess or assume answers. If the answer is not available, respond with "Not found on this document." 
                 #####
                 Questions for Each Field:
-                1.	Contract Type: "What is the contract type for customer_name (Design, Design/Deploy, or Monotype Fonts License Order Form)?"
+                1.	Contract Type: "What is the contract type for customer_name (something something Order Form, The full value would be along the lines of 'Monotype Fonts Service and License Order Form')?"
                 2.	Contract End Date: "What is the contract end date for customer_name?"
                 3.	Contract Start Date: "What is the contract start date for customer_name?"
                 4.	Contract Number: "What is the unique contract number for customer_name?"
@@ -414,7 +435,7 @@ if run_open_ai:
                 9.	Licensed Applications: "How many Licensed Applications does customer have (DO NOT FETCH Software Products)? (Do not confuse it with other licensed components like Licensed Software Products, or licensed desktop application else you will be heavily penalized) "
                 10.	Licensed User Count: "What is the total number of Monotype fonts portal users for customer_name?"
                 11.	Monotype Font Support: "{Which Monotype fonts support level did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Monotype Font Support" is not explicitly mentioned the answer should be "Not found on the document" else it should be the value under "Monotype Fonts Support". DO NOT RETURN "Yes" or "No" for this field}"
-                12.	Primary Licensed User: "What is the email address of the primary licensed user for customer_name?"
+                12.	Primary Licensed User: "Who is the primary licensed user and what is their name and title?"
                 13.	Add-On Type:  Always answer 'Not found on this document' 
                 14.	Name Fonts: "List all the font names for 'customer_name'. Do not include any incomplete values, vague statements or sentances such as 'refer to the documents', 'and more', 'All Font Software available on Monotype Fonts during the Term.', etc else you be very heavily penalized. Return only the exact font names."
                 15.	Material Number: Return this only if the "Name Fonts" field has an output. "What are the material numbers for customer_name?. GIVE ALL THE VALUES, DO NOT GIVE PARTIAL VALUES" 
@@ -427,8 +448,16 @@ if run_open_ai:
                 22.	Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer 'Yes' or 'No' strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. Only answer 'Yes' if the terms 'swap' or 'replace' are explicitly mentioned in relation to Production Fonts. If not, the answer should be 'No.' Do not infer the answer."}"
                 23: Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Give the exact words/paragraph as in the contract else you will be heavily penalized. This is only found in the "License Usage per Term" section.
                 24. Reporting days: "How many days does customer_name have to report their usage of the font software as Production Fonts? Focus only on the reporting days explicitly mentioned for reporting Production Fonts usage after receiving the list of downloaded Font Software. Exclude any references to providing information upon request or disputing inaccuracies. Include any additional days granted only if they follow a formal notice. Provide the result in the format 'X days and Y additional days' if applicable, or just 'X days' if no additional days are mentioned"
-                25. Current Value: "What is the total fee the customer must pay from the contract? If the fee is split into multiple payments or includes renewal terms, list all relevant amounts separately"
-
+                25. Licensed Electronic Documents: "What is the number of Commercial Electronic Documents the customer_name can have?"
+                26. Licensed Externally Accessed Servers: "How many Externally Accessed Servers can the customer have?"
+                27. Binding Obligations: "What is the Binding Obligation that is bound to this contract?"
+                28. Primary User Email: "What is the email address of the primary licensed user for customer_name?"
+                29. Primary User First Name: "What is the first name of the primary user?"
+                30. Primary User Last Name: "What is the last name of the primary user?"
+                31. Brand & License Protection: "What is the Brand & License Protection for the customer?"
+                32. Past Usage Term(Dates): "What is the past usage terms from the customer (only give dates, if it exist)?"  
+                
+             
                 #####
                 IMPORTANT POINTS: 
                 * LICENSED APPLICATION AND LICENSED SOFTWARE PRODUCT ARE DIFFERENT.
@@ -480,23 +509,28 @@ if run_open_ai:
     print(completion.choices[0].message.content)
 
     # Step 1: Parse the content into a structured format (table)
-    lines = completion.choices[0].message.content.splitlines()[3:]  # Ignore the header lines
+    lines = [line for line in completion.choices[0].message.content.splitlines() if '----' not in line]  # Remove separator lines
+
     fields, values, reasons = [], [], []
 
-    for line in lines:
+    for line in lines[1:]:  # Start from index 1 to skip the column headers
         if '|' in line:  # Ensure it's a valid row
             parts = line.split('|')[1:4]  # Split into Field, Value, and Reason
-            fields.append(parts[0].strip())
-            values.append(parts[1].strip())
-            reasons.append(parts[2].strip())
+            if len(parts) == 3:  # Ensure there are exactly three parts
+                fields.append(parts[0].strip())
+                values.append(parts[1].strip())
+                reasons.append(parts[2].strip())
 
-    if "new.email@example.com" in values[10] or "@example.com" in values[10] or "@example" in values[10]:
-        values[10] = primary_user_email
+    # Ensure email logic works correctly
+    if len(values) > 27 and ("new.email@example.com" in values[27] or "@example.com" in values[27] or "@example" in values[27]):
+        values[27] = primary_user_email
         print("Changed the primary user email")
     else:
         print("Failed to change primary user email")
 
-    values[3] = customer_name
+    # Update customer name
+    if len(values) > 3:
+        values[4] = customer_name
 
     # Step 2: Create a DataFrame
     data = {
@@ -509,8 +543,5 @@ if run_open_ai:
     # Step 3: Export to Excel
     file_path = f'./ExcelOutput/{document_name}_data.xlsx'
     df.to_excel(file_path, index=False)
-
-    # file_path = f'./ExcelOutput/{document_name}_data.csv'
-    # df.to_csv(file_path, index=False)
 
     print(f"Data has been exported to {file_path}")
