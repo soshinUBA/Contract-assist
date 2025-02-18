@@ -11,8 +11,8 @@ from llama_parse import LlamaParse
 load_dotenv(".env")
 os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
 
-pdf_documents = ["./Contracts/test/COMPLETED Cricut, Inc  Other 04 06 2022.pdf", "./Contracts/test/COMPLETED Cricut, Inc  Other 04 06 2022 (1).pdf"]
-word_doc = "./FAQ_document_updated.docx"
+pdf_documents = ["./Contracts/21_new_contracts/BIC USA-1019907.pdf"]
+word_doc = "./FAQ_document_42_fields.docx"
 all_text = ""
 faq_doc = ""
 parser = LlamaParse(result_type="markdown")
@@ -77,9 +77,9 @@ for pdf_document in pdf_documents:
                         formatted_row = " | ".join([str(cell) if cell is not None else "" for cell in row])
                         all_text += f"{formatted_row}\n"
 
-with open("contract_b4.md", "w", encoding="utf-8") as f:
+with open("contract_b4.txt", "w", encoding="utf-8") as f:
     f.write(all_text)
-    print(all_text)
+
 def clean_excess(text):
     """
     This function removes any extra lines or names following the extracted customer name.
@@ -275,14 +275,14 @@ elif re.search(r"Name:\s*([A-Za-z\s\.]+)\s*(?=Name:)", all_text, re.DOTALL):
 
 else:
     print("Customer name not found.")
-    customer_name = "Delta Innovations Triple"
-    new_name = "Blessing Company Ltd"
+    # customer_name = "Delta Innovations Triple"
+    # new_name = "Blessing Company Ltd"
 
-    # Normalize line breaks (fixing words split by newlines)
-    all_text_normalized = re.sub(r'([a-zA-Z])\s*\n\s*([a-zA-Z])', r'\1 \2', all_text)
+    # # Normalize line breaks (fixing words split by newlines)
+    # all_text_normalized = re.sub(r'([a-zA-Z])\s*\n\s*([a-zA-Z])', r'\1 \2', all_text)
 
-    all_text_normalized = all_text_normalized.replace(customer_name, new_name)
-    # run_open_ai = False
+    # all_text_normalized = all_text_normalized.replace(customer_name, new_name)
+    run_open_ai = False
 
 with open("contractb4Email.txt", "w", encoding="utf-8") as f:
     f.write(all_text)
@@ -371,11 +371,12 @@ def replace_names(text, name_patterns):
         print(f"Replacing name: {name}")
         text = re.sub(re.escape(name), "John Doe", text)
     
-    return text
+    return text, all_names
 
 # Apply the function
-all_text = replace_names(all_text, name_patterns)
+all_text, all_names = replace_names(all_text, name_patterns)
 
+print("THESE ARE ALL THE NAMES, ",all_names)
 
 with open("contract.txt", "w", encoding="utf-8") as f:
     f.write(all_text)
@@ -424,39 +425,48 @@ if run_open_ai:
                 Do not guess or assume answers. If the answer is not available, respond with "Not found on this document." 
                 #####
                 Questions for Each Field:
-                1.	Contract Type: "What is the contract type for customer_name (something something Order Form, The full value would be along the lines of 'Monotype Fonts Service and License Order Form')?"
+                1.	Contract Start Date: "What is the contract start date for customer_name?"
                 2.	Contract End Date: "What is the contract end date for customer_name?"
-                3.	Contract Start Date: "What is the contract start date for customer_name?"
-                4.	Contract Number: "What is the unique contract number for customer_name?"
-                5.	Customer Name: "What is the entity name agreeing to the contract?"
-                6.	Web Page Views: "What is the Licensed Page Views (Web Page Content) for customer_name? Search your knowledge (This can be found in the License Usage per Term section)"
-                7.	Digital Ad Views: "What is the Licensed Impressions (Digital Marketing Communications) for customer_name? Search your knowledge (This can be found in the License Usage per Term section)"
-                8.	Commercial Documents: "What is the upper limit for licensed commercial documents for customer_name?"
-                9.	Licensed Applications: "How many Licensed Applications does customer have (DO NOT FETCH Software Products)? (Do not confuse it with other licensed components like Licensed Software Products, or licensed desktop application else you will be heavily penalized) "
-                10.	Licensed User Count: "What is the total number of Monotype fonts portal users for customer_name?"
-                11.	Monotype Font Support: "{Which Monotype fonts support level did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Monotype Font Support" is not explicitly mentioned the answer should be "Not found on the document" else it should be the value under "Monotype Fonts Support". DO NOT RETURN "Yes" or "No" for this field}"
-                12.	Primary Licensed User: "Who is the primary licensed user and what is their name and title?"
-                13.	Add-On Type:  Always answer 'Not found on this document' 
-                14.	Name Fonts: "List all the font names for 'customer_name'. Do not include any incomplete values, vague statements or sentances such as 'refer to the documents', 'and more', 'All Font Software available on Monotype Fonts during the Term.', etc else you be very heavily penalized. Return only the exact font names."
-                15.	Material Number: Return this only if the "Name Fonts" field has an output. "What are the material numbers for customer_name?. GIVE ALL THE VALUES, DO NOT GIVE PARTIAL VALUES" 
-                16.	Contract Name: "What is the name of the contract document for customer_name?"
-                17.	Offline Contract: Default is "Yes", unless specified "Online". "Is this an offline contract for customer_name? (Store 'Yes' if no indication of being online)."
-                18.	Opportunity ID: "Is there an Opportunity ID for customer_name? (Store 'No' if unavailable)."
-                19.	SAP ID: "Is there an SAP ID for customer_name? (Store 'Not found on this document' if unavailable)."
-                20.	Territory: "What is the country listed in the address for customer_name? (The country should not be abbreviated and is found ONLY IN THE CUSTOMER ADDRESS. DO NOT TAKE ANY OTHER ADDRESS OTHER THAN THE CUSTOMER)."
-                21.	Additional User Count: "How many Additional Licensed Desktop Users (which are not Licensed Monotype Fonts Users) can the customer_name have? DO NOT COUFUSE THIS WITH "Licensed Desktop Users" THEY ARE NOT THE SAME"
-                22.	Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer 'Yes' or 'No' strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. Only answer 'Yes' if the terms 'swap' or 'replace' are explicitly mentioned in relation to Production Fonts. If not, the answer should be 'No.' Do not infer the answer."}"
-                23: Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Give the exact words/paragraph as in the contract else you will be heavily penalized. This is only found in the "License Usage per Term" section.
-                24. Reporting days: "How many days does customer_name have to report their usage of the font software as Production Fonts? Focus only on the reporting days explicitly mentioned for reporting Production Fonts usage after receiving the list of downloaded Font Software. Exclude any references to providing information upon request or disputing inaccuracies. Include any additional days granted only if they follow a formal notice. Provide the result in the format 'X days and Y additional days' if applicable, or just 'X days' if no additional days are mentioned"
-                25. Licensed Electronic Documents: "What is the number of Commercial Electronic Documents the customer_name can have?"
-                26. Licensed Externally Accessed Servers: "How many Externally Accessed Servers can the customer have?"
-                27. Binding Obligations: "What is the Binding Obligation that is bound to this contract?"
-                28. Primary User Email: "What is the email address of the primary licensed user for customer_name?"
-                29. Primary User First Name: "What is the first name of the primary user?"
-                30. Primary User Last Name: "What is the last name of the primary user?"
-                31. Brand & License Protection: "What is the Brand & License Protection for the customer?"
-                32. Past Usage Term(Dates): "What is the past usage terms from the customer (only give dates, if it exist)?"  
-                
+                3.	Contract Number: "What is the unique contract number for customer_name?"
+                4.	Contract Type: "What is the contract type for customer_name (something something Order Form, The full value would be along the lines of 'Monotype Fonts Service and License Order Form')?"
+                5.	Offline Contract: Default is "Yes", unless specified "Online". "Is this an offline contract for customer_name? (Store 'Yes' if no indication of being online)."
+                6.	Territory: "What is the country listed in the address for customer_name? (The country should not be abbreviated and is found ONLY IN THE CUSTOMER ADDRESS. DO NOT TAKE ANY OTHER ADDRESS OTHER THAN THE CUSTOMER)."
+                7.  Agreement Level: "Return Original if there is no addendum found, else return Addendum"
+                8.  Contracting Entity: "What is the entity that made the document? The answer is company name and it is found in the beginning of the page right before the address phone and fax. If none is found return Not found on the document" 
+                9: Customer Name: "What is the entity name agreeing to the contract?"
+                10. Customer Contact Email: "What is the customer contact email?"
+                11. Customer Contact First Name: "What is the customer contact's first name"
+                12. Customer Contact Last Name: "What is the customer contact's last name"
+                13. Primary Licensed Monotype Fonts User Email: "What is the primary licensed user's emai?"
+                14. Web Page Views: "What is the Licensed Page Views (Web Page Content) for customer_name? Search your knowledge (This can be found in the License Usage per Term section)"
+                15. Digital Ad Views: "What is the Licensed Impressions (Digital Marketing Communications) for customer_name? Search your knowledge (This can be found in the License Usage per Term section)"
+                16. Licensed Applications: "How many Licensed Applications does customer have (DO NOT FETCH Software Products)? (Do not confuse it with other licensed components like Licensed Software Products, or licensed desktop application else you will be heavily penalized) "
+                17. Registered Users: "What is the Aggregate registered users? This is only found Licensed Application and no where else."
+                18.	Commercial Documents: "What is the upper limit for licensed commercial documents for customer_name?"
+                19.	Licensed Externally Accessed Servers: "How many Externally Accessed Servers can the customer have?"
+                20.	Licensed Monotype Fonts User: "What is the total number of Monotype fonts users for customer_name?"
+                21. Licensed Desktop Users: "How many Licensed Desktop Users can the customer_name have?
+                22. Additional Desktop User Count: "How many Additional Licensed Desktop Users (which are not Licensed Monotype Fonts Users) can the customer_name have? DO NOT COUFUSE THIS WITH "Licensed Desktop Users" THEY ARE NOT THE SAME"
+                23. Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Give the exact words/paragraph as in the contract else you will be heavily penalized. The answer is only found in the "License Usage per Term" section DO NOT LOOK FOR THE ANSWER IN "Add-On Font Software".
+                24. Company Desktop License: "Return with only YES or NO for this field, is the customer allowed to have Licensed Desktop Users?"
+                25.	Monotype Font Support: "{Which Monotype fonts support level did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Monotype Font Support" is not explicitly mentioned the answer should be "Not found on the document" else it should be the value under "Monotype Fonts Support". DO NOT RETURN "Yes" or "No" for this field}"
+                26. Font Name (Add-On Fonts): "What are the Font names located in Add-On Fonts table? For this field, only look for the answer in the Add-on Fonts Software table"
+                27. Material Number (Add-On Fonts): "What are the material numbers located in Add-On Fonts table? For this field, only look for the answer in the Add-on Fonts Software table"
+                28. Named Fonts Fonts Name: List all the font names for 'customer_name'. Do not include any incomplete values, vague statements or sentances such as 'refer to the documents', 'and more', 'All Font Software available on Monotype Fonts during the Term.', etc else you be very heavily penalized. Return only the exact font names. Do not take the answer from Add On Fonts Software, for this field" 
+                29: Named Fonts Material Number : Return this only if the "Named Fonts Fonts Name" field has an output. "What are the material numbers for customer_name?. GIVE ALL THE VALUES, DO NOT GIVE PARTIAL VALUES, For this Field DO NOT TAKE ANSWER FROM ADD ON FONTS SOFTWARE TABLE" 
+                30. Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer 'Yes' or 'No' strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. Only answer 'Yes' if the terms 'swap' or 'replace' are explicitly mentioned in relation to Production Fonts. If not, the answer should be 'No.' Do not infer the answer."}"
+                31. Reporting days: "How many days does customer_name have to report their usage of the font software as Production Fonts? Focus only on the reporting days explicitly mentioned for reporting Production Fonts usage after receiving the list of downloaded Font Software. Exclude any references to providing information upon request or disputing inaccuracies. Include any additional days granted only if they follow a formal notice. Provide the result in the format 'X days and Y additional days' if applicable, or just 'X days' if no additional days are mentioned"
+                32. Brand & License Protection: "Which field did the customer pick for Brands & License Protection, 'Yes' or 'No'"
+                33. Binding Obligations(Sub-licensing/Transfer Entities): "Who are the entities that have sublicense rights granted? Answer can be found in E. SUBLICENSE RIGHTS. or in Binding Obligation."
+                34. Past Usage Term(Dates): "What is the past usage terms from the customer (only give dates, if it exist)?"  
+                35. Past Use Font Name: "What are the past use Font names the customer had ? Only accept answers that are listed in Past Use Term"
+                36. Past Use Asset: "What was the website/app name/digital ads/server the font was used on? Answer can be found in the Past Use Application table"
+                37. Past Use Material Number: "What are the past use Font names the customer had ? Only accept answers that are listed in Past Use Term"
+                38. Auto Renewal: "Return Yes if the contract will renew automatically after contract end date, else return No."
+                39. Renewal Period: "What is the Additional year periods for which the contract will renew automatically for unless unless either party provides written notice of termination?"
+                40. Plus Inventory: "In Add-On Inventory Sets, is Plus selected? Return Yes if it is selected, No if it is not selected"
+                41. Adobe Originals: "In Add-On Inventory Sets, is Adobe Originals selected? Return Yes if it is selected, No if it is not selected"
+                42. Go Forward Assests: "What are the names of the website/app name/digital ads/server in which the font software will be used going forward?"
              
                 #####
                 IMPORTANT POINTS: 
@@ -510,6 +520,7 @@ if run_open_ai:
 
     # Step 1: Parse the content into a structured format (table)
     lines = [line for line in completion.choices[0].message.content.splitlines() if '----' not in line]  # Remove separator lines
+    lines = [line for line in lines if not re.match(r'^\|\s*-+\s*\|\s*-+\s*\|\s*-+\s*\|$', line)]
 
     fields, values, reasons = [], [], []
 
@@ -522,16 +533,25 @@ if run_open_ai:
                 reasons.append(parts[2].strip())
 
     # Ensure email logic works correctly
-    if len(values) > 27 and ("new.email@example.com" in values[27] or "@example.com" in values[27] or "@example" in values[27]):
-        values[27] = primary_user_email
+    if len(values) > 12 and ("new.email@example.com" in values[12] or "@example.com" in values[12] or "@example" in values[14]):
+        values[12] = primary_user_email
         print("Changed the primary user email")
     else:
         print("Failed to change primary user email")
 
     # Update customer name
-    if len(values) > 3:
-        values[4] = customer_name
+    if len(values) > 7:
+        values[8] = customer_name
 
+    if all_names:
+        contact_name = all_names[0].strip()
+        name_parts = contact_name.split() 
+        first_name = name_parts[0] if name_parts else ""
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+        values[10] = first_name
+        values[11] = last_name
+        print("Changed the first and last name")
     # Step 2: Create a DataFrame
     data = {
         "Field": fields,
