@@ -12,12 +12,12 @@ from anonymizer import EntityAnonymizer
 load_dotenv(".env")
 os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
 
-pdf_documents = ["Contracts/10_contracts_anonymizer_test/M00220818/M00220818/COMPLETED Burger Fuel NZ MT Fonts Enterprise License 08 14 2023.pdf"]
+pdf_documents = ["Contracts/10_contracts_anonymizer_test/M00213697/Editorial Planeta, S. A.U - M00213697 .pdf", "Contracts/10_contracts_anonymizer_test/M00213697/COMPLETED Editorial Planeta S A U  Other 06 17 2024.pdf"]
 word_doc = "./FAQ_document_42_fields.docx"
 all_text = ""
 faq_doc = ""
 parser = LlamaParse(result_type="markdown")
-run_open_ai = False
+run_open_ai = True
 
 anonymizer = EntityAnonymizer()
 
@@ -79,7 +79,6 @@ with open("contract_b4.txt", "w", encoding="utf-8") as f:
     f.write(all_text)
 
 anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
-
 with open("contract_anonymized.txt", "w", encoding="utf-8") as f:
     f.write(anonymized_text)
 
@@ -163,7 +162,7 @@ if run_open_ai:
                 20.	Licensed Monotype Fonts User: "What is the total number of Monotype fonts users for customer_name?"
                 21. Licensed Desktop Users: "How many Licensed Desktop Users can the customer_name have?
                 22. Additional Desktop User Count: "How many Additional Licensed Desktop Users (which are not Licensed Monotype Fonts Users) can the customer_name have? DO NOT COUFUSE THIS WITH "Licensed Desktop Users" THEY ARE NOT THE SAME"
-                23. Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Give the exact words/paragraph as in the contract else you will be heavily penalized. The answer is only found in the "License Usage per Term" section DO NOT LOOK FOR THE ANSWER IN "Add-On Font Software".
+                23. Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Only give the latest integer count. The answer is only found in the "License Usage per Term" section DO NOT LOOK FOR THE ANSWER IN "Add-On Font Software".
                 24. Company Desktop License: "Return with only YES or NO for this field, is the customer allowed to have Licensed Desktop Users?"
                 25.	Monotype Font Support: "{Which Monotype fonts support level did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Monotype Font Support" is not explicitly mentioned the answer should be "Not found on the document" else it should be the value under "Monotype Fonts Support". DO NOT RETURN "Yes" or "No" for this field}"
                 26. Font Name (Add-On Fonts): "What are the Font names located in Add-On Fonts table? For this field, only look for the answer in the Add-on Fonts Software table"
@@ -248,26 +247,18 @@ if run_open_ai:
                 values.append(parts[1].strip())
                 reasons.append(parts[2].strip())
 
-    # Ensure email logic works correctly
-    if len(values) > 12 and ("new.email@example.com" in values[12] or "@example.com" in values[12] or "@example" in values[14]):
-        values[12] = primary_user_email
-        print("Changed the primary user email")
-    else:
-        print("Failed to change primary user email")
+    # Primary email,customer name, first name, last name, customer emails Map it
+        # Ensure email logic works correctly
+    if len(values) > 12:
+        indices_to_check = [8, 10, 11, 12]
 
-    # Update customer name
-    if len(values) > 7:
-        values[8] = customer_name
+        reverse_mapping = {v: k for k, v in mapping.items()}
 
-    if all_names:
-        contact_name = all_names[0].strip()
-        name_parts = contact_name.split() 
-        first_name = name_parts[0] if name_parts else ""
-        last_name = name_parts[1] if len(name_parts) > 1 else ""
+        # Iterate through specified indices and replace values if found
+        for i in indices_to_check:
+            if values[i] in reverse_mapping:
+                values[i] = reverse_mapping[values[i]]
 
-        values[10] = first_name
-        values[11] = last_name
-        print("Changed the first and last name")
     # Step 2: Create a DataFrame
     data = {
         "Field": fields,
