@@ -12,7 +12,7 @@ from anonymizer import EntityAnonymizer
 load_dotenv(".env")
 os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
 
-pdf_documents = ["Contracts/10_contracts_anonymizer_test/M00213697/Editorial Planeta, S. A.U - M00213697 .pdf", "Contracts/10_contracts_anonymizer_test/M00213697/COMPLETED Editorial Planeta S A U  Other 06 17 2024.pdf"]
+pdf_documents = ["Contracts/test/COMPLETED Bank of Montreal MT Fonts Enterprise License 03 27 2024.pdf"]
 word_doc = "./FAQ_document_42_fields.docx"
 all_text = ""
 faq_doc = ""
@@ -89,7 +89,8 @@ document_name = os.path.splitext(base_name)[0]
 output_filename = f"./Output/{document_name}_Output.txt"
 with open(output_filename, "w", encoding="utf-8") as file:
     file.write(anonymized_text)
-
+with open(f"./Output/{document_name}_mappings.txt", "w", encoding="utf-8") as file:
+    file.write(str(mapping))
 print("Message content saved successfully!")
 
 print("\nMapping Dictionary:")
@@ -140,14 +141,14 @@ if run_open_ai:
                 Do not guess or assume answers. If the answer is not available, respond with "Not found on this document." 
                 #####
                 Questions for Each Field:
-                1.	Contract Start Date: "What is the contract start date for customer_name?"
+                1.	Contract Start Date: "What is the contract start date for customer_name? If no contract start date is mentioned Identify the Effective Date based on the date below the signatures of both parties. If the dates differ, use the latest date as the Effective Date.""
                 2.	Contract End Date: "What is the contract end date for customer_name?"
                 3.	Contract Number: "What is the unique contract number for customer_name?"
-                4.	Contract Type: "What is the contract type for customer_name (something something Order Form, The full value would be along the lines of 'Monotype Fonts Service and License Order Form')?"
+                4.	Contract Type: "What is the contract type for customer_name? The classificaiton for the Contract Type field SHOULD ONLY BE ONE OF THE FOLLOWING, (*License and Order Form, Monotype Enterprise License, Web Server License Agreement, Monotype Fonts - Agency Pitch,Publisher Package, Monotype Fonts – Design,EZQ, Monotype Mosaic agreement, Monotype Design and Deploy Agreement,Font Software License Agreement, OEM Software License Agreement). Look for exact or close matches to these terms in the document title or header. For example, if 'License and Order Form' appears in the title, classify as 'License and Order Form'. If 'Design and Deploy License and Order Form' appears, classify as 'Monotype Design and Deploy Agreement'. Do NOT invent new classifications or combine terms. If none of these exact classifications appear in the document, identify the closest match from this list based on the document header/title.""
                 5.	Offline Contract: Default is "Yes", unless specified "Online". "Is this an offline contract for customer_name? (Store 'Yes' if no indication of being online)."
                 6.	Territory: "What is the country listed in the address for customer_name? (The country should not be abbreviated and is found ONLY IN THE CUSTOMER ADDRESS. DO NOT TAKE ANY OTHER ADDRESS OTHER THAN THE CUSTOMER)."
                 7.  Agreement Level: "Return Original if there is no addendum found, else return Addendum"
-                8.  Contracting Entity: "What is the entity that made the document? The answer is company name and it is found in the beginning of the page right before the address phone and fax. If none is found return Not found on the document" 
+                8.  Contracting Entity: "What is the entity that made the document? The answer is company name and it is found in the beginning of the page right before the address phone and fax. If none is found return Not found on the document. If you are getting 'Monotype Ltd' the output should be replaced with 'Monotype Limited'" 
                 9: Customer Name: "What is the entity name agreeing to the contract?"
                 10. Customer Contact Email: "What is the customer contact email?"
                 11. Customer Contact First Name: "What is the customer contact's first name"
@@ -162,14 +163,14 @@ if run_open_ai:
                 20.	Licensed Monotype Fonts User: "What is the total number of Monotype fonts users for customer_name?"
                 21. Licensed Desktop Users: "How many Licensed Desktop Users can the customer_name have?
                 22. Additional Desktop User Count: "How many Additional Licensed Desktop Users (which are not Licensed Monotype Fonts Users) can the customer_name have? DO NOT COUFUSE THIS WITH "Licensed Desktop Users" THEY ARE NOT THE SAME"
-                23. Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Only give the latest integer count. The answer is only found in the "License Usage per Term" section DO NOT LOOK FOR THE ANSWER IN "Add-On Font Software".
+                23. Production font: "How many production fonts does customer have in contract as well as addendum, if present?" Select the Production Font Integer with the latest date. However, if the contract end date is beyond 2024, select the font Integer that came first. Follow The financial year that starts from April to March. The answer is only found in the "License Usage per Term" section DO NOT LOOK FOR THE ANSWER IN "Add-On Font Software".
                 24. Company Desktop License: "Return with only YES or NO for this field, is the customer allowed to have Licensed Desktop Users?"
                 25.	Monotype Font Support: "{Which Monotype fonts support level did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Monotype Font Support" is not explicitly mentioned the answer should be "Not found on the document" else it should be the value under "Monotype Fonts Support". DO NOT RETURN "Yes" or "No" for this field}"
                 26. Font Name (Add-On Fonts): "What are the Font names located in Add-On Fonts table? For this field, only look for the answer in the Add-on Fonts Software table"
                 27. Material Number (Add-On Fonts): "What are the material numbers located in Add-On Fonts table? For this field, only look for the answer in the Add-on Fonts Software table"
                 28. Named Fonts Fonts Name: List all the font names for 'customer_name'. Do not include any incomplete values, vague statements or sentances such as 'refer to the documents', 'and more', 'All Font Software available on Monotype Fonts during the Term.', etc else you be very heavily penalized. Return only the exact font names. Do not take the answer from Add On Fonts Software, for this field" 
                 29: Named Fonts Material Number : Return this only if the "Named Fonts Fonts Name" field has an output. "What are the material numbers for customer_name?. GIVE ALL THE VALUES, DO NOT GIVE PARTIAL VALUES, For this Field DO NOT TAKE ANSWER FROM ADD ON FONTS SOFTWARE TABLE" 
-                30. Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer 'Yes' or 'No' strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. Only answer 'Yes' if the terms 'swap' or 'replace' are explicitly mentioned in relation to Production Fonts. If not, the answer should be 'No.' Do not infer the answer."}"
+                30. Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. determine the frequency of swapping strictly based on the License Terms. Only answer 'Quarterly,' 'Annually,' or 'Bi-Yearly' if a specific frequency is explicitly mentioned, else 'Not found on the document', Do not infer the answer."}"
                 31. Reporting days: "How many days does customer_name have to report their usage of the font software as Production Fonts? Focus only on the reporting days explicitly mentioned for reporting Production Fonts usage after receiving the list of downloaded Font Software. Exclude any references to providing information upon request or disputing inaccuracies. Include any additional days granted only if they follow a formal notice. Provide the result in the format 'X days and Y additional days' if applicable, or just 'X days' if no additional days are mentioned"
                 32. Brand & License Protection: "Which field did the customer pick for Brands & License Protection, 'Yes' or 'No'"
                 33. Binding Obligations(Sub-licensing/Transfer Entities): "Who are the entities that have sublicense rights granted? Answer can be found in E. SUBLICENSE RIGHTS. or in Binding Obligation."
@@ -199,7 +200,8 @@ if run_open_ai:
                 12. The Contract's Date whose termination date is before today's date is expired.
                 13. YOU CANNOT MAKE ANY ASSUMPTIONS.
                 15. ALWAYS present fields, their values and their reasons in a clear tabular format. Ensure that all answers are contained within the table and not outside of it.
-                16. Your output should EXACTLY BE THE 24 fields MENTIONED or you will be penalized. A sample output for the 24 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
+                16. Your output should EXACTLY BE THE 42 fields MENTIONED or you will be penalized. A sample output for the 42 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
+                17. For the fields Web Page Views, Digital Ad Views, Licensed Applications, Registered Users, Commercial Documents, Licensed Externally Accessed Servers, Licensed Monotype Fonts User, Licensed Desktop Users, Additional Desktop User Count, Production font, return only the precise numerical value (fully written out, no abbreviations like "mill" or "k") or exact text from the document with no additional words, units, or explanations. Numbers should be written in full form (example: "8500000" not "8.5 mill"; "2000" not "2k").
                 18. YOU SHOULD FOLLOW ALL ABOVE MENTIONED POINTS ELSE YOU WILL BE PENAILZED HEAVILY
                 sample output format, Field,Value,Reason for value
             """},
