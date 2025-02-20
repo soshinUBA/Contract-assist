@@ -319,7 +319,7 @@ class EntityAnonymizer:
 
             for entity in ner_results:
                 if entity['entity_group'] in ['PER', 'ORG']:
-                    if entity.get('score', 1.0) < 0.75:
+                    if entity.get('score', 1.0) < 0.85:
                         continue
 
                     entity_text = entity['word'].strip(" #")
@@ -382,17 +382,29 @@ class EntityAnonymizer:
         return unique_entities
 
     def _apply_mappings(self, text: str, entities: List[dict]) -> str:
-        """Apply entity mappings to create anonymized text."""
-        sorted_entities = sorted(entities, key=lambda x: x['start'], reverse=True)
+        """Replace all instances of detected entities, even when mixed with special characters."""
         modified_text = text
 
-        for entity in sorted_entities:
-            modified_text = (modified_text[:entity['start']] +
-                             entity['dummy_value'] +
-                             modified_text[entity['end']:])
+        # Convert entity mapping into a dictionary
+        entity_replacements = {entity['text']: entity['dummy_value'] for entity in entities}
 
+        # Sort entity names from longest to shortest to avoid partial replacements
+        sorted_entities = sorted(entity_replacements.keys(), key=len, reverse=True)
+
+        for original_text in sorted_entities:
+            dummy_value = entity_replacements[original_text]
+
+            # New regex pattern: match the entity even if attached to special characters
+            # pattern = rf'(\W|^){re.escape(original_text)}(\W|$)'
+
+            # Replace all occurrences in the text, keeping surrounding characters unchanged
+            # modified_text = re.sub(pattern, rf'\1{dummy_value}\2', modified_text)
+            
+            modified_text = modified_text.replace(original_text, dummy_value,)
+ 
         return modified_text
-
+        
+    
     def clear_mappings(self) -> None:
         """Clear all stored mappings and used dummy values."""
         self.entity_mapping.clear()
@@ -403,7 +415,7 @@ class EntityAnonymizer:
 # Example usage
 # if __name__ == "__main__":
 #     # File path
-#     file_path = "contracts_extracted_text/BitSight Technologies-M00212805.txt"
+#     file_path = "contract_b4.txt"
 
 #     # Read the original text
 #     with open(file_path, "r", encoding="utf-8") as file:
