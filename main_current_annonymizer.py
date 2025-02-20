@@ -13,7 +13,7 @@ import tiktoken
 
 load_dotenv(".env")
 os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
-contract_path = "Contracts/10_contracts_anonymizer_test/M00213697"
+contract_path = "Contracts/Contracts_to_Run/Individuals/M00218693.pdf"
 
 def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
@@ -100,7 +100,13 @@ token_text = """YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS.
                 40. Plus Inventory: "In Add-On Inventory Sets, is Plus selected? Return Yes if it is selected, No if it is not selected"
                 41. Adobe Originals: "In Add-On Inventory Sets, is Adobe Originals selected? Return Yes if it is selected, No if it is not selected"
                 42. Go Forward Assests: "What are the names of the website/app name/digital ads/server in which the font software will be used going forward?"
-             
+                43. Monotype Fonts Plan: "{Which Monotype fonts plan  did 'customer_name' choose: App Kit , Standard , Pro, Unlimited or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Monotype Fonts Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                44. Onboarding: "{Which Onbording did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Onboarding" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                45. Monotype Single Sign-On:  "{Which Single Sign-On Option  did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Single Sign-On Option" is not explicitly mentioned the answer should be "Not found on the document".}"
+                46. Customer Success Plan: "{Which Customer Success plan  did 'customer_name' choose: Basic , Enhanced , Premier, Elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Customer Success Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                47. Studio Services: "{Which Studio Services did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Studio Services" is not explicitly mentioned the answer should be "Not found on the document".}"
+                48. Monotype Font/User Management: "{Which Font/User Management did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Font/User Management" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+
                 #####
                 IMPORTANT POINTS: 
                 * LICENSED APPLICATION AND LICENSED SOFTWARE PRODUCT ARE DIFFERENT.
@@ -117,7 +123,7 @@ token_text = """YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS.
                 12. The Contract's Date whose termination date is before today's date is expired.
                 13. YOU CANNOT MAKE ANY ASSUMPTIONS.
                 15. ALWAYS present fields, their values and their reasons in a clear tabular format. Ensure that all answers are contained within the table and not outside of it.
-                16. Your output should EXACTLY BE THE 42 fields MENTIONED or you will be penalized. A sample output for the 42 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
+                16. Your output should EXACTLY BE THE 47 fields MENTIONED or you will be penalized. A sample output for the 47 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
                 17. For the fields Web Page Views, Digital Ad Views, Licensed Applications, Registered Users, Commercial Documents, Licensed Externally Accessed Servers, Licensed Monotype Fonts User, Licensed Desktop Users, Additional Desktop User Count, Production font, return only the precise numerical value (fully written out, no abbreviations like "mill" or "k") or exact text from the document with no additional words, units, or explanations. Numbers should be written in full form (example: "8500000" not "8.5 mill"; "2000" not "2k").
                 18. YOU SHOULD FOLLOW ALL ABOVE MENTIONED POINTS ELSE YOU WILL BE PENAILZED HEAVILY
                 sample output format, Field,Value,Reason for value"""
@@ -125,7 +131,7 @@ token_text = """YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS.
 pdf_documents = get_pdfs_from_folder(contract_path)
 print("Running for these pdfs, ", pdf_documents)
 
-word_doc = "./FAQ_document_42_fields.docx"
+word_doc = "./FAQ_document_47_fields.docx"
 all_text = ""
 faq_doc = ""
 parser = LlamaParse(result_type="markdown")
@@ -154,7 +160,7 @@ print("############# Starting PDF  Processing ######################")
 # Open the PDF file
 for pdf_document in pdf_documents:
     text1 = extract_text_from_pdf(pdf_document)
-    if len(text1) <= 1000:
+    if len(text1) <= 300:
         print("Image file detected, skipping")
         exit()
     all_text += text1
@@ -273,7 +279,13 @@ if run_open_ai:
                 40. Plus Inventory: "In Add-On Inventory Sets, is Plus selected? Return Yes if it is selected, No if it is not selected"
                 41. Adobe Originals: "In Add-On Inventory Sets, is Adobe Originals selected? Return Yes if it is selected, No if it is not selected"
                 42. Go Forward Assests: "What are the names of the website/app name/digital ads/server in which the font software will be used going forward?"
-             
+                43. Monotype Fonts Plan: "{Which Monotype fonts plan  did 'customer_name' choose: App Kit , Standard , Pro, Unlimited or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Monotype Fonts Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                44. Onboarding: "{Which Onbording did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Onboarding" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                45. Monotype Single Sign-On:  "{Which Single Sign-On Option  did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Single Sign-On Option" is not explicitly mentioned the answer should be "Not found on the document".}"
+                46. Customer Success Plan: "{Which Customer Success plan  did 'customer_name' choose: Basic , Enhanced , Premier, Elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Customer Success Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                47. Studio Services: "{Which Studio Services did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Studio Services" is not explicitly mentioned the answer should be "Not found on the document".}"
+                48. Monotype Font/User Management: "{Which Font/User Management did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Font/User Management" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
+                
                 #####
                 IMPORTANT POINTS: 
                 * LICENSED APPLICATION AND LICENSED SOFTWARE PRODUCT ARE DIFFERENT.
@@ -290,7 +302,7 @@ if run_open_ai:
                 12. The Contract's Date whose termination date is before today's date is expired.
                 13. YOU CANNOT MAKE ANY ASSUMPTIONS.
                 15. ALWAYS present fields, their values and their reasons in a clear tabular format. Ensure that all answers are contained within the table and not outside of it.
-                16. Your output should EXACTLY BE THE 42 fields MENTIONED or you will be penalized. A sample output for the 42 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
+                16. Your output should EXACTLY BE THE 47 fields MENTIONED or you will be penalized. A sample output for the 47 fields from the FAQ document. Ensure that all answers are specific to the correct customer and contract in question.
                 17. For the fields Web Page Views, Digital Ad Views, Licensed Applications, Registered Users, Commercial Documents, Licensed Externally Accessed Servers, Licensed Monotype Fonts User, Licensed Desktop Users, Additional Desktop User Count, Production font, return only the precise numerical value (fully written out, no abbreviations like "mill" or "k") or exact text from the document with no additional words, units, or explanations. Numbers should be written in full form (example: "8500000" not "8.5 mill"; "2000" not "2k").
                 18. YOU SHOULD FOLLOW ALL ABOVE MENTIONED POINTS ELSE YOU WILL BE PENAILZED HEAVILY
                 sample output format, Field,Value,Reason for value
