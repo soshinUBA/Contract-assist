@@ -168,12 +168,25 @@ class EntityAnonymizer:
 
             # Filter entities and create final list
             final_entities = []
+
+            # 5. Add EMAIL and PHONE entities from the initial extraction.
             for entity in initial_entities:
-                if (entity['label'] == 'PERSON' and entity['text'] in valid_persons) or \
-                        (entity['label'] == 'ORG' and entity['text'] in valid_orgs) or \
-                        entity['label'] in ['EMAIL', 'PHONE']:
+                if entity['label'] in ['EMAIL']:
                     self._add_entity(final_entities, entity['text'], entity['label'],
                                      entity['start'], entity['end'])
+
+            # 6. For each validated PERSON, search the entire text for all occurrences.
+            for person in valid_persons:
+                # Use regex with word boundaries to match whole names (adjust as needed).
+                pattern = r'\b' + re.escape(person) + r'\b'
+                for match in re.finditer(pattern, text):
+                    self._add_entity(final_entities, person, 'PERSON', match.start(), match.end())
+
+            # 7. Similarly, for each validated ORG, search the entire text.
+            for org in valid_orgs:
+                pattern = r'\b' + re.escape(org) + r'\b'
+                for match in re.finditer(pattern, text):
+                    self._add_entity(final_entities, org, 'ORG', match.start(), match.end())
 
             # Add phone numbers
             phone_entities = self._extract_phone_numbers(text)
