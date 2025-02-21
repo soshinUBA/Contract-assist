@@ -131,7 +131,7 @@ def contract_assist(contract_path):
     word_doc = "./FAQ_document_48_fields.docx"
     all_text = ""
     faq_doc = ""
-    run_open_ai = False
+    run_open_ai = True
 
     anonymizer = EntityAnonymizer()
 
@@ -265,7 +265,7 @@ def contract_assist(contract_path):
                     29: Named Fonts Material Number : Return this only if the "Named Fonts Fonts Name" field has an output. "What are the material numbers for customer_name?. GIVE ALL THE VALUES, DO NOT GIVE PARTIAL VALUES, For this Field DO NOT TAKE ANSWER FROM ADD ON FONTS SOFTWARE TABLE" 
                     30. Swapping Allowed: "{"Can production fonts be swapped for 'customer_name'? Answer strictly based on the Production Fonts field in the License for Monotype Fonts License Terms. determine the frequency of swapping strictly based on the License Terms. Only answer 'Quarterly,' 'Annually,' or 'Bi-Yearly' if a specific frequency is explicitly mentioned, else 'Not found on the document', Do not infer the answer."}"
                     31. Reporting days: "How many days does customer_name have to report their usage of the font software as Production Fonts? Focus only on the reporting days explicitly mentioned for reporting Production Fonts usage after receiving the list of downloaded Font Software. Exclude any references to providing information upon request or disputing inaccuracies. Include any additional days granted only if they follow a formal notice. Provide the result in the format 'X days and Y additional days' if applicable, or just 'X days' if no additional days are mentioned"
-                    32. Brand & License Protection: "Which field did the customer pick for Brands & License Protection, 'Yes' or 'No'"
+                    32. Brand & License Protection: "Which option did the customer select for Brands & License Protection: 'Yes' or 'No'? Please give value as per selected checkbox."
                     33. Binding Obligations(Sub-licensing/Transfer Entities): "Who are the entities that have sublicense rights granted? Answer can be found in E. SUBLICENSE RIGHTS. or in Binding Obligation."
                     34. Past Usage Term(Dates): "What is the past usage terms from the customer (only give dates, if it exist)?"  
                     35. Past Use Font Name: "What are the past use Font names the customer had ? Only accept answers that are listed in Past Use Term"
@@ -278,7 +278,7 @@ def contract_assist(contract_path):
                     42. Go Forward Assests: "What are the names of the website/app name/digital ads/server in which the font software will be used going forward?"
                     43. Monotype Fonts Plan: "{Which Monotype fonts plan  did 'customer_name' choose: App Kit , Standard , Pro, Unlimited or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Monotype Fonts Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
                     44. Onboarding: "{Which Onbording did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Onboarding" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
-                    45. Monotype Single Sign-On:  "{Which Single Sign-On Option  did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Single Sign-On Option" is not explicitly mentioned the answer should be "Not found on the document".}"
+                    45. Monotype Single Sign-On:  "Which option did 'customer_name' select for Single Sign-On: 'Yes' or 'No'? Please respond in the appropriate language format and indicate the selected checkbox. If 'Single Sign-On' is not explicitly mentioned in the document, respond with 'Not found on the document'"
                     46. Customer Success Plan: "{Which Customer Success plan  did 'customer_name' choose: Basic , Enhanced , Premier, Elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 4. If "Customer Success Plan" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
                     47. Studio Services: "{Which Studio Services did 'customer_name' choose: Yes or No?" DON'T GIVE ANY ANSWER APART FORM 2. If "Studio Services" is not explicitly mentioned the answer should be "Not found on the document".}"
                     48. Monotype Font/User Management: "{Which Font/User Management did 'customer_name' choose: basic, premier, elite or "Not found on the document" ? DON'T GIVE ANY ANSWER APART FORM THESE 3. If "Font/User Management" is not explicitly mentioned the answer should be "Not found on the document". DO NOT RETURN "Yes" or "No" for this field}"
@@ -327,7 +327,7 @@ def contract_assist(contract_path):
         document_name = os.path.splitext(base_name)[0]
 
         # Create the desired output file name (e.g., M00217189_Output.txt)
-        output_filename = f"./Output/{document_name}_Output.txt"
+        output_filename = f"./Output/{document_name}_Output_2.txt"
         with open(output_filename, "w", encoding="utf-8") as file:
             file.write(message)  # Assuming 'message' contains the content you want to write
 

@@ -196,10 +196,10 @@ class EntityAnonymizer:
         """Load required NLP models."""
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                "dbmdz/bert-large-cased-finetuned-conll03-english"
+                "xlm-roberta-large-finetuned-conll03-english"
             )
             self.model = AutoModelForTokenClassification.from_pretrained(
-                "dbmdz/bert-large-cased-finetuned-conll03-english"
+                "xlm-roberta-large-finetuned-conll03-english"
             )
             self.nlp = pipeline("ner", model=self.model, tokenizer=self.tokenizer,
                                 aggregation_strategy="simple")
@@ -286,24 +286,66 @@ class EntityAnonymizer:
         raise ValueError(f"Could not generate unique dummy value after {max_attempts} attempts")
 
     def _extract_phone_numbers(self, text: str) -> List[dict]:
-        """Extract phone numbers from text."""
-        # Comprehensive phone pattern matching various formats
+        """Extract phone numbers from text for multiple countries including US, Germany, Portugal, China, and Japan.
+
+        Formats supported:
+        US: +1 XXX-XXX-XXXX, (XXX) XXX-XXXX, XXX-XXX-XXXX
+        Germany: +49 XXX XXXXXXX, +49-XXX-XXXXXXX, 0XXX-XXXXXXX
+        Portugal: +351 XXX XXX XXX, +351-XXX-XXX-XXX
+        China: +86 XXX XXXX XXXX, +86-XXX-XXXX-XXXX
+        Japan: +81 XX XXXX XXXX, +81-XX-XXXX-XXXX
+        """
         phone_patterns = [
-            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # 123-456-7890 or 123.456.7890 or 1234567890
+            # US Patterns
+            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # 123-456-7890
             r'\(\d{3}\)\s*\d{3}[-.]?\d{4}\b',  # (123) 456-7890
-            r'\+\d{1,3}[-.]?\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # +1-123-456-7890
-            r'\b\d{3}[-.]?\d{4}\b'  # 123-4567 or 1234567
+            r'\+1[-.\s]?\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # +1-123-456-7890
+
+            # German Patterns
+            r'\+49[-.\s]?\d{3}[-.\s]?\d{7}\b',  # +49 123 4567890
+            r'0\d{3}[-.\s]?\d{7}\b',  # 0123 4567890
+            r'\+49[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +49 1234 5678 9012 (mobile)
+            r'\+49[-.\s]?\d{2}[-.\s]?\d{4}[-.\s]?\d{4}\b',
+
+            # Portuguese Patterns
+            r'\+351[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{3}\b',  # +351 123 456 789
+            r'00351[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{3}\b',  # 00351 123 456 789
+
+            # Chinese Patterns
+            r'\+86[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +86 123 4567 8901
+            r'00886[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # 00886 123 4567 8901
+
+            # Japanese Patterns
+            r'\+81[-.\s]?\d{2}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +81 12 3456 7890
+            r'0\d{1,2}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # 012-3456-7890 or 0123-456-7890
         ]
+
+        def identify_country(phone_number: str) -> str:
+            """Identify the country based on the phone number pattern."""
+            if phone_number.startswith('+1') or len(
+                    phone_number.replace('-', '').replace('.', '').replace(' ', '')) == 10:
+                return "US"
+            elif '+49' in phone_number or phone_number.startswith('0'):
+                return "GERMANY"
+            elif '+351' in phone_number or '00351' in phone_number:
+                return "PORTUGAL"
+            elif '+86' in phone_number or '00886' in phone_number:
+                return "CHINA"
+            elif '+81' in phone_number or (phone_number.startswith('0') and len(phone_number) >= 10):
+                return "JAPAN"
+            return "UNKNOWN"
 
         phone_entities = []
         for pattern in phone_patterns:
             for match in re.finditer(pattern, text):
                 phone_number = match.group()
+                country = identify_country(phone_number)
                 phone_entities.append({
                     "text": phone_number,
                     "start": match.start(),
                     "end": match.end(),
-                    "label": "PHONE"
+                    "label": "PHONE",
+                    "country": country
                 })
 
         return phone_entities
