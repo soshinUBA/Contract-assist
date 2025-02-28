@@ -7,9 +7,10 @@ import regex as re
 from anonymizer import EntityAnonymizer
 from pdf_extractor import extract_text_from_pdf
 import tiktoken
+from langchain_openai import ChatOpenAI
+
 
 load_dotenv(".env")
-os.environ["LLAMA_CLOUD_API_KEY"] = os.getenv("LAMA_CLOUD_API_KEY")
 
 def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
@@ -194,15 +195,15 @@ def contract_assist(contract_path):
 
 
     if run_open_ai:
-        client = OpenAI(
-        api_key=os.getenv("openai-api-key")  # this is also the default, it can be omitted
-        )
-
-        completion = client.chat.completions.create(
+        client = ChatOpenAI(
             model="gpt-4o",
             temperature=0,
             max_tokens=3500,
-            messages=[
+            api_key=os.getenv("OPENAI_API_KEY")
+        )
+
+        response = client.invoke(
+            input=[
                 {"role": "system", "content": """
                     YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS. 
                     - Upon receiving a user inquiry, you **must** directly search the document and return answers for all 24 fields in the required format. 
@@ -317,7 +318,11 @@ def contract_assist(contract_path):
             ]
         )
 
-        message = completion.choices[0].message.content
+        print("#####")
+        print(response)
+        print("#####")
+
+        message = response.content
         pdf_document = pdf_documents[0]
 
         # Extract the base name of the file (e.g., M00217189.pdf)
@@ -332,10 +337,10 @@ def contract_assist(contract_path):
             file.write(message)  # Assuming 'message' contains the content you want to write
 
         print("Message content saved successfully!")
-        print(completion.choices[0].message.content)
+        print(response.content)
 
         # Step 1: Parse the content into a structured format (table)
-        lines = [line for line in completion.choices[0].message.content.splitlines() if '----' not in line]  # Remove separator lines
+        lines = [line for line in response.content.splitlines() if '----' not in line]  # Remove separator lines
         lines = [line for line in lines if not re.match(r'^\|\s*-+\s*\|\s*-+\s*\|\s*-+\s*\|$', line)]
 
         fields, values, reasons = [], [], []

@@ -10,6 +10,7 @@ from typing import Dict, Tuple, List, Set
 import logging
 import json
 from openai import OpenAI
+from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
@@ -26,7 +27,12 @@ class EntityAnonymizer:
 
         # Initialize OpenAI client
         self.openai_api_key = os.getenv("openai-api-key")
-        self.client = OpenAI(api_key=self.openai_api_key)
+        self.client = ChatOpenAI(
+            model="gpt-4o",
+            temperature=0,
+            max_tokens=3500,
+            api_key=os.getenv("OPENAI_API_KEY")
+        )
 
         # Load NLP models
         self.logger.info("Loading NLP models...")
@@ -121,20 +127,19 @@ class EntityAnonymizer:
             List[str]: List of validated entity names
         """
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
+            response = self.client.invoke(
+                input=[
                     {"role": "system",
                      "content": "You are a helpful assistant that validates entity names. Respond only with a JSON object containing a 'valid_names' array."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0,
                 response_format={"type": "json_object"}
             )
 
             # Parse the JSON response
-            validated_entities = json.loads(response.choices[0].message.content)
-            return validated_entities.get('valid_names', [])
+            json_str = response.content
+            parsed_response = json.loads(json_str)
+            return parsed_response.get('valid_names', [])
 
         except Exception as e:
             self.logger.error(f"Error in LLM validation: {str(e)}")
