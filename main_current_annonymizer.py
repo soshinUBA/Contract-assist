@@ -7,7 +7,9 @@ import regex as re
 from anonymizer import EntityAnonymizer
 from pdf_extractor import extract_text_from_pdf
 import tiktoken
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+from collections import defaultdict
 
 
 load_dotenv(".env")
@@ -16,6 +18,19 @@ def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
     tokens = encoding.encode(text)
     return len(tokens)
+
+def extract_first_addendum_number(text):
+    """
+    Finds the first occurrence of 'Addendum No. X' in the text and returns the addendum number.
+    """
+    words = text.split()
+    for i, word in enumerate(words):
+        if word.lower() == "addendum" and i + 2 < len(words) and words[i + 1].lower() == "no.":
+            try:
+                return int(words[i + 2])
+            except ValueError:
+                return None  # In case it's not a valid number
+    return None  # Return None if no valid addendum number is found
 
 def get_pdfs_from_folder(folder_path):
     """Returns a list of PDF file paths from the given folder."""
@@ -125,7 +140,8 @@ def contract_assist(contract_path):
                     17. For the fields Web Page Views, Digital Ad Views, Licensed Applications, Registered Users, Commercial Documents, Licensed Externally Accessed Servers, Licensed Monotype Fonts User, Licensed Desktop Users, Additional Desktop User Count, Production font, return only the precise numerical value (fully written out, no abbreviations like "mill" or "k") or exact text from the document with no additional words, units, or explanations. Numbers should be written in full form (example: "8500000" not "8.5 mill"; "2000" not "2k").
                     18. YOU SHOULD FOLLOW ALL ABOVE MENTIONED POINTS ELSE YOU WILL BE PENAILZED HEAVILY
                     sample output format, Field,Value,Reason for value"""
-
+    
+    token_text_og = token_text
     pdf_documents = get_pdfs_from_folder(contract_path)
     print("Running for these pdfs, ", pdf_documents)
 
@@ -167,9 +183,245 @@ def contract_assist(contract_path):
 
     token_text += all_text
     token_count = count_tokens(token_text)
-    if token_count > 120000:
-        print("Token limit execeeded, Exiting the code.")
+    token_text = token_text_og #make token text back to the original
+
+    #If content is over 100 000, we will take each of the 
+    if token_count > 15000:
+        print("Token limit execeeded")
+        # exit()
+        addendum_contracts = {}
+        original_contracts = []
+        contract_chunks_output = []
+        for pdf_document in pdf_documents:
+            pdf_text = extract_text_from_pdf(pdf_document)  # Extract text
+            addendum_count = pdf_text.strip().lower().count("addendum")  # Count "Addendum" occurrences
+
+            if addendum_count < 5:
+                original_contracts.append(pdf_text)  # Classify as original contract
+            else:
+                addendum_number = extract_first_addendum_number(pdf_text)  # Extract addendum number
+                if addendum_number:
+                    if addendum_number in addendum_contracts:
+                        addendum_contracts[addendum_number] += " " + pdf_text  # Append to existing text
+                    else:
+                        addendum_contracts[addendum_number] = pdf_text  # Store first instance
+        sorted_addendums = [{str(key): addendum_contracts[key]} for key in sorted(addendum_contracts)]
+
+        # print("Orignal Contract list: \n", original_contracts)
+        # print("Addendum Contract list: \n", addendum_contracts)
+        # print("Sorted Addendums, \n", sorted_addendums)
+        for addendum in sorted_addendums:
+            print(list(addendum.keys())[0])
+
+        #Chunking the contracts and addendums
+        all_text_chunks = []
+        all_text = ""
+
+        for contract in original_contracts:
+            old_text = all_text
+            new_text = all_text + " " + contract
+            if count_tokens(new_text) <= 15000:
+                all_text = new_text  # Add the text if it doesn't exceed limit
+                print("contract's lenght, ", count_tokens(new_text))
+            else:
+                all_text_chunks.append(old_text)
+                all_text = contract  # Start a new batch
+        
+        for addendum_dict in sorted_addendums:
+            addendum_number, addendum_text = list(addendum_dict.items())[0]  # Extract key-value pair
+            old_text = all_text
+            new_text = all_text + " " + addendum_text
+
+            if count_tokens(new_text) <= 15000:
+                all_text = new_text  # Add the text if it doesn't exceed limit
+                print(count_tokens(new_text))
+            else:
+                all_text_chunks.append(old_text)
+                all_text = addendum_text
+
+        all_text_chunks.append(all_text)
+        all_text_chunks = list(dict.fromkeys(all_text_chunks))
+        print("The lenght of the all text chunk is ", len(all_text_chunks))
+        pdf_document = pdf_documents[0]
+        base_name = os.path.basename(pdf_document)
+        document_name = os.path.splitext(base_name)[0]
+        output_filename = f"./Output/{document_name}_Output.txt"
+
+        for i, chunk in enumerate(all_text_chunks, 1):
+            with open(f"chunk{i}.txt", "w", encoding="utf-8") as f:
+                f.write(chunk)
+            print(f"Chunk {i} saved with {count_tokens(chunk)} tokens.")
+            file_path = f'./ExcelOutput/{document_name}_data{i}.xlsx'
+            #Anonymize each chunk and send to GPT
+            anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
+            with open("contract_anonymized.txt", "w", encoding="utf-8") as f:
+                f.write(anonymized_text)
+            with open(output_filename, "w", encoding="utf-8") as file:
+                file.write(anonymized_text)
+            with open(f"./Output/{document_name}_mappings.txt", "w", encoding="utf-8") as file:
+                file.write(str(mapping))
+            print("Message content saved successfully!")
+            print("\nMapping Dictionary:")
+            for original, dummy in mapping.items():
+                print(f"{original} → {dummy}")
+            #get the result put it in DF
+            if run_open_ai:
+                client = AzureChatOpenAI(
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                    openai_api_version=os.getenv("OPENAI_API_VERSION"),
+                    temperature=0,
+                )
+
+                response = client.invoke(
+                    input=[
+                        {"role": "system", "content": token_text},
+                        {
+                            "role": "user",
+                            "content": f""" 
+                                This is the faq document: {faq_doc}.
+                                ######
+                                Give me the details of the contract below:
+            
+                                {chunk}
+                            """
+                        }
+                    ]
+                )
+
+                print("#####")
+                print(response)
+                print("#####")
+
+                message = response.content
+                print("Message content saved successfully!")
+                print(response.content)
+
+                # Step 1: Parse the content into a structured format (table)
+                lines = [line for line in response.content.splitlines() if '----' not in line]  # Remove separator lines
+                lines = [line for line in lines if not re.match(r'^\|\s*-+\s*\|\s*-+\s*\|\s*-+\s*\|$', line)]
+
+                fields, values, reasons = [], [], []
+
+                for line in lines[1:]:  # Start from index 1 to skip the column headers
+                    if '|' in line:  # Ensure it's a valid row
+                        parts = line.split('|')[1:4]  # Split into Field, Value, and Reason
+                        if len(parts) == 3:  # Ensure there are exactly three parts
+                            fields.append(parts[0].strip())
+                            values.append(parts[1].strip())
+                            reasons.append(parts[2].strip())
+
+                # Primary email,customer name, first name, last name, customer emails Map it
+                    # Ensure email logic works correctly
+                if len(values) > 12:
+                    indices_to_check = [8, 10, 11, 12]
+
+                    reverse_mapping = {v: k for k, v in mapping.items()}
+
+                    # Iterate through specified indices and replace values if found
+                    for i in indices_to_check:
+                        if values[i] in reverse_mapping:
+                            values[i] = reverse_mapping[values[i]]
+
+                # Step 2: Create a DataFrame
+                data = {
+                    "Field": fields,
+                    "Value": values,
+                    "Reason for value": reasons
+                }
+                df = pd.DataFrame(data)
+
+                # Step 3: Export to Excel
+                df.to_excel(file_path, index=False)
+    
+                print(f"Data has been exported to {file_path}")
+                json_data = df.to_dict(orient="records")
+
+                contract_chunks_output.append(json_data)
+        with open("json_output_list.txt", "w", encoding="utf-8") as f:
+            f.write(str(contract_chunks_output))
+        #Send the list of json output to the openai to merge the results
+        #mask customer name, first anme, last name, email and put them in a variable first, then only run the open ai api
+        masking_values = {
+            "Customer Name": "Blessing Ltd",
+            "Customer Contact First Name": "John",
+            "Customer Contact Last Name": "Doe",
+            "Primary Licensed Monotype Fonts User Email": "updated_email@example.com"
+        }
+        updated_chunk_output = []
+        for chunk in contract_chunks_output:
+            updated_chunk = []  # Store the updated records for each chunk
+
+            for item in chunk:
+                new_item = item.copy()  # Make a copy to avoid modifying the original data
+                if new_item["Field"] in masking_values:
+                    new_item["Value"] = masking_values[new_item["Field"]]  # Update value
+                updated_chunk.append(new_item)  # Store the updated record
+
+            updated_chunk_output.append(updated_chunk)
         exit()
+        if run_open_ai:
+                client = AzureChatOpenAI(
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                    openai_api_version=os.getenv("OPENAI_API_VERSION"),
+                    temperature=0,
+                )
+
+                response = client.invoke(
+                    input=[
+                        {"role": "system", "content": """
+                            You will be given a list of JSON data, where each JSON object contains **48 fields** extracted from a contract. 
+
+                            All the JSON data belong to the **same company** and represent **different parts of the contract, including the main agreement and its addendums**. These documents were **chunked into 100,000-token segments** due to processing limitations and were analyzed separately. 
+
+                            Your task is to **merge all the JSON objects together** to form **one final, complete JSON output** while ensuring that the values from the addendums are prioritized if they update the original contract.
+
+                            ---
+
+                            ### **🔹 Important Instructions**
+                            1. **Accurate Merging (Prioritizing Addendum Updates)**:
+                            - Ensure that all fields from the main contract and addendums are correctly merged without duplication.
+                            - **If a value is stated to be updated in an addendum, that updated value must be taken instead of the original contract value**.
+                            - Maintain the correct **hierarchy and relationship** between the main contract and its addendums.
+
+                            2. **Handling "Not found on the document" Values**:
+                            - If a field appears in multiple JSON objects and one of the values is `"Not found on the document"`, discard it and use the correct value if available.
+                            - If all occurrences of a field contain `"Not found on the document"`, then leave it as `"Not found"`.
+                            - If an **addendum explicitly updates a field**, ensure the final output reflects **that updated value** rather than the original contract's value.
+
+                            3. **Consistency & Logical Structure**:
+                            - Ensure **only the most relevant and up-to-date information** is retained.
+                            - If an addendum modifies a value (e.g., **Contract End Date** is extended), the **latest addendum value must be used** in the final output.
+                            - Avoid redundant, conflicting, or outdated values from previous contract versions.
+
+                            4. **Final Output**:
+                            - The merged JSON should **retain only the most complete and accurate** values from all JSON objects.
+                            - Ensure that all fields are **formatted consistently and logically organized**.
+
+                            """},
+                        {
+                            "role": "user",
+                            "content": f""" 
+                                This is the list containg all the json data for this company, {contract_chunks_output}.
+                                Merge them and return a single json data like the one in the list.                   
+                            """
+                        }
+                    ]
+                )
+
+                print("#####")
+                print(response)
+                print("#####")
+
+                message = response.content
+                print("Message content saved successfully!")
+                print(response.content)
+            # return file_path
+
+        with open("json_output_list.txt", "w", encoding="utf-8") as f:
+            f.write(str(contract_chunks_output))
+        return file_path
 
     anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
     with open("contract_anonymized.txt", "w", encoding="utf-8") as f:
@@ -195,11 +447,11 @@ def contract_assist(contract_path):
 
 
     if run_open_ai:
-        client = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            max_tokens=3500,
-            api_key=os.getenv("OPENAI_API_KEY")
+        client = AzureChatOpenAI(
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                    openai_api_version=os.getenv("OPENAI_API_VERSION"),
+                    temperature=0,
         )
 
         response = client.invoke(

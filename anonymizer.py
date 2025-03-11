@@ -10,7 +10,8 @@ from typing import Dict, Tuple, List, Set
 import logging
 import json
 from openai import OpenAI
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
+
 
 load_dotenv()
 
@@ -25,14 +26,14 @@ class EntityAnonymizer:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
-        # Initialize OpenAI client
-        self.openai_api_key = os.getenv("openai-api-key")
-        self.client = ChatOpenAI(
-            model="gpt-4o",
+        # Initialize Azure OpenAI client
+        self.client = AzureChatOpenAI(
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+            openai_api_version=os.getenv("OPENAI_API_VERSION"),
             temperature=0,
-            max_tokens=3500,
-            api_key=os.getenv("OPENAI_API_KEY")
         )
+
 
         # Load NLP models
         self.logger.info("Loading NLP models...")
@@ -135,7 +136,7 @@ class EntityAnonymizer:
                 ],
                 response_format={"type": "json_object"}
             )
-
+            print("RESPONSE FROM AI: ",response)
             # Parse the JSON response
             json_str = response.content
             parsed_response = json.loads(json_str)
