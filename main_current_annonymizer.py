@@ -7,7 +7,7 @@ import regex as re
 from anonymizer import EntityAnonymizer
 from pdf_extractor import extract_text_from_pdf
 import tiktoken
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
 
 
 load_dotenv(".env")
@@ -195,12 +195,12 @@ def contract_assist(contract_path):
 
 
     if run_open_ai:
-        client = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            max_tokens=3500,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        client = AzureChatOpenAI(
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                    openai_api_version=os.getenv("OPENAI_API_VERSION"),
+                    temperature=0,
+                )
 
         response = client.invoke(
             input=[
@@ -312,7 +312,7 @@ def contract_assist(contract_path):
                         ######
                         Give me the details of the contract below:
     
-                        {all_text} 
+                        {anonymized_text} 
                     """
                 }
             ]
@@ -356,7 +356,7 @@ def contract_assist(contract_path):
         # Primary email,customer name, first name, last name, customer emails Map it
             # Ensure email logic works correctly
         if len(values) > 12:
-            indices_to_check = [8, 10, 11, 12]
+            indices_to_check = [8, 9, 10, 11, 12]
 
             reverse_mapping = {v: k for k, v in mapping.items()}
 
