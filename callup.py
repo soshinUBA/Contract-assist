@@ -3,7 +3,7 @@ import asyncio
 
 contract_list = [
     # "Contracts/OneDrive_1_21-02-2025/Global Order Management & Royalty/Non-English/German/Individuals/M00222652.pdf",
-                 "Contracts/OneDrive_1_21-02-2025/Global Order Management & Royalty/Non-English/German/Individuals/M00216210.pdf",
+                 "Contracts/M00215821.pdf",
                 #  "Contracts/OneDrive_1_21-02-2025/Global Order Management & Royalty/Non-English/German/Individuals/M00221232.pdf",
                 # "Contracts/OneDrive_1_21-02-2025/Global Order Management & Royalty/Non-English/German/Individuals/M00223219-COMPLETED Hamburg Commercial Bank AG MT Fonts Enterprise License 2024-12-20-M00223219.pdf",
                 #  "Contracts/OneDrive_1_21-02-2025/Global Order Management & Royalty/Non-English/German/Individuals/M00223429-COMPLETED JUNGBUNZLAUER SUISSE AG MT Fonts Enterprise License 2025-01-10.pdf",
