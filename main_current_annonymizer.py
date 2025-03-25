@@ -8,11 +8,14 @@ from anonymizer import EntityAnonymizer
 from pdf_extractor import extract_text_from_pdf
 import tiktoken
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
-# from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from collections import defaultdict
 import json_repair
+import asyncio
 
 load_dotenv(".env")
+
+token_limit = 15000
 
 def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
@@ -39,6 +42,29 @@ def get_pdfs_from_folder(folder_path):
     
     pdf_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.lower().endswith('.pdf')]
     return pdf_files
+
+async def chunk_content_to_token_limit(content, token_limit_value=token_limit):
+    try:
+        number = 0
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=token_limit_value,  # Targeted for GPT-4o
+            chunk_overlap=1500,  # Overlap to prevent abrupt breaks
+            length_function=lambda text: count_tokens(text)  # Ensures it counts GPT-4o tokens
+        )
+        chunks = text_splitter.split_text(content)
+
+        for chunk in chunks:
+            number += 1
+            chunk_token_length = count_tokens(chunk)
+            print(f"Chunk {number} - Token Length: {chunk_token_length}")
+            print(f"Chunk {number} - String Length: {len(chunk)}")
+            with open(f"./Output/chunk{number}.txt", "w", encoding="utf-8") as f:
+                f.write(chunk)
+        
+        return chunks
+    except Exception as e:
+        print("Error while chunking content:", e)
+        exit()
 
 def contract_assist(contract_path):
     sample_output = [
@@ -92,7 +118,7 @@ def contract_assist(contract_path):
         {"Field": "Font User Management", "Value": "Basic/Premier/Elite/Not Found in the Document", "Reason for value": ""}
     ]
 
-    fields_to_unmask = ["Customer Name", "Customer Contact Email", "Customer Contact First Name", "Customer Contact Last Name", "Primary Licensed Monotype Fonts User Email"]
+    fields_to_unmask = ["Customer Name", "Customer Contact Email", "Customer Contact First Name", "Customer Contact Last Name", "Primary Licensed Monotype Fonts User Email", "Binding Obligations(Sub-licensing/Transfer Entities)","Past Use Asset"]
 
     token_text = """YOU WILL BE HEAVILY PENALIZED FOR NOT FOLLOWING INSTRUCTIONS. 
                     - Upon receiving a user inquiry, you **must** directly search the document and return answers for all 48 fields in the required format. 
@@ -199,28 +225,10 @@ def contract_assist(contract_path):
     pdf_documents = get_pdfs_from_folder(contract_path)
     print("Running for these pdfs, ", pdf_documents)
 
-    word_doc = "./FAQ_document_48_fields.docx"
     all_text = ""
-    faq_doc = ""
     run_open_ai = True
 
     anonymizer = EntityAnonymizer()
-
-    # Load the .docx file
-    doc = docx.Document(word_doc)
-    for para in doc.paragraphs:
-        faq_doc += para.text + "\n"
-
-    # Extract and store tables
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                faq_doc += cell.text + " | "
-            faq_doc += "\n"
-
-    print(faq_doc)
-    with open("faq.txt", "w") as f:
-        f.write(faq_doc)
 
     print("############# Starting PDF  Processing ######################")
 
@@ -240,7 +248,7 @@ def contract_assist(contract_path):
     token_text = token_text_og #make token text back to the original
 
     #If content is over 100 000
-    if token_count > 15000:
+    if token_count > token_limit:
         print("Token limit execeeded")
         addendum_contracts = {}
         original_contracts = []
@@ -276,53 +284,25 @@ def contract_assist(contract_path):
         all_text_chunks = []
         all_text = ""
 
+        # Put all the contracts in all_text, then anonymize it all, do the recursive function, will get list of chunks, we will send these chunks to gpt, get the results and put the results in list, then finally send it again to gpt to merge it.
         for contract in original_contracts:
-            new_text = all_text + " " + contract if all_text else contract  # Ensure we start with a valid text
-            if count_tokens(new_text) <= 15000:
-                all_text = new_text  # Append if within limit
-            else:
-                if all_text:  # Don't append if empty
-                    all_text_chunks.append(all_text)
-                all_text = contract  # Start a new batch
+            all_text = all_text + " \n" + contract
 
         for addendum_dict in sorted_addendums:
             addendum_number, addendum_text = list(addendum_dict.items())[0]
-            new_text = all_text + " " + addendum_text if all_text else addendum_text  # Ensure we start with a valid text
-            if count_tokens(new_text) <= 15000:
-                all_text = new_text
-            else:
-                if all_text:  # Don't append if empty
-                    all_text_chunks.append(all_text)
-                all_text = addendum_text  # Start new batch
+            all_text = all_text + " \n" + addendum_text
 
-        # Final check to append remaining text if not empty
-        if all_text:
-            all_text_chunks.append(all_text)
-        all_text_chunks = list(dict.fromkeys(all_text_chunks))
-        print("The lenght of the all text chunk is ", len(all_text_chunks))
         pdf_document = pdf_documents[0]
         base_name = os.path.basename(pdf_document)
         document_name = os.path.splitext(base_name)[0]
+        file_path = f'./ExcelOutput/{document_name}_data.xlsx'
         output_filename = f"./Output/{document_name}_Output.txt"
-
-        for i, chunk in enumerate(all_text_chunks, 1):
-            with open(f"chunk{i}.txt", "w", encoding="utf-8") as f:
-                f.write(chunk)
-            print(f"Chunk {i} saved with {count_tokens(chunk)} tokens.")
-            file_path = f'./ExcelOutput/{document_name}_data{i}.xlsx'
-            #Anonymize each chunk and send to GPT
-            anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
-            with open("contract_anonymized.txt", "w", encoding="utf-8") as f:
-                f.write(anonymized_text)
-            with open(output_filename, "w", encoding="utf-8") as file:
-                file.write(anonymized_text)
-            with open(f"./Output/{document_name}_mappings.txt", "w", encoding="utf-8") as file:
-                file.write(str(mapping))
-            print("Message content saved successfully!")
-            print("\nMapping Dictionary:")
-            for original, dummy in mapping.items():
-                print(f"{original} → {dummy}")
-            #get the result put it in DF
+        anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
+        list_of_chunks = asyncio.run(chunk_content_to_token_limit(anonymized_text))
+        chunk_ai_output = []
+        chunk_number = 0
+        for chunk in list_of_chunks:
+            chunk_number +=1
             if run_open_ai:
                 client = AzureChatOpenAI(
                     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -352,79 +332,12 @@ def contract_assist(contract_path):
                 print("#####")
 
                 message = response.content
-                with open("final_json_output.txt", "w", encoding="utf-8") as f:
+                with open(f"./Output/chunk_json_output{chunk_number}.txt", "w", encoding="utf-8") as f:
                     f.write(str(message))
                 output_msg = json_repair.loads(message)
-                print("The tyoe of output_msg is, ",type(output_msg))
+                chunk_ai_output.append(output_msg)
 
-                if len(output_msg) == 48:
-                    print("perfect amount")
-                    first_name = next((entry["Value"] for entry in output_msg if entry["Field"] == "Customer Contact First Name"), None)
-                    last_name = next((entry["Value"] for entry in output_msg if entry["Field"] == "Customer Contact Last Name"), None)
-                    full_name = f"{first_name} {last_name}" if first_name and last_name else None
-
-                    reverse_mapping = {v: k for k, v in mapping.items()}
-                    for entry in output_msg:
-                        field_name = entry["Field"]
-                        if field_name in fields_to_unmask:
-                            if entry['Value'] in reverse_mapping:
-                                entry['Value'] = reverse_mapping[entry['Value']]
-                                print(", ",entry['Value'])
-                            elif field_name in ["Customer Contact First Name", "Customer Contact Last Name"]:
-                                if full_name and full_name in reverse_mapping:
-                                    # Get the original full name from reverse_mapping
-                                    original_full_name = reverse_mapping[full_name]
-                                    original_parts = original_full_name.split(" ", 1)  # Split into first and last
-
-                                    if field_name == "Customer Contact First Name":
-                                        entry["Value"] = original_parts[0]  # Take first part
-                                        print(f"Updated First Name: {entry['Value']}")
-                                    elif field_name == "Customer Contact Last Name" and len(original_parts) > 1:
-                                        entry["Value"] = original_parts[1]  # Take second part
-                                        print(f"Updated Last Name: {entry['Value']}")
-                else:
-                    print("Output Fields length did not match")
-
-                with open("final_remapped_json_output.txt", "w", encoding="utf-8") as f:
-                    f.write(str(output_msg))
-                df = pd.DataFrame(output_msg)
-                df.to_excel(f'./ExcelOutput/{document_name}_data{i}.xlsx', index=False)
-    
-                print(f"Data has been exported to {file_path}")
-                json_data = df.to_dict(orient="records")
-
-                contract_chunks_output.append(json_data)
-        with open("json_output_list.txt", "w", encoding="utf-8") as f:
-            f.write(str(contract_chunks_output))
-        #Send the list of json output to the openai to merge the results
-        #mask customer name, first anme, last name, email and put them in a variable first, then only run the open ai api
-        masking_values = {
-            "Customer Name": "Blessing Ltd",
-            "Customer Contact First Name": "John",
-            "Customer Contact Last Name": "Doe",
-            "Customer Contact Email": "customercontact@example.com",
-            "Primary Licensed Monotype Fonts User Email": "updated_email@example.com"
-        }
-        updated_chunk_output = []
-        original_mapping = {}
-        chunk_number = 0
-        for chunk in contract_chunks_output:
-            updated_chunk = []  # Store the updated records for each chunk
-            for item in chunk:
-                new_item = item.copy()  # Make a copy to avoid modifying the original data
-                if new_item["Field"] in masking_values:
-                    if chunk_number == 0:
-                        original_mapping[item["Field"]] = item["Value"]
-                        print("this is the orignal_mapping")
-                        print(original_mapping)
-
-                    new_item["Value"] = masking_values[new_item["Field"]]  # Update value
-                
-
-                updated_chunk.append(new_item)  # Store the updated record
-            chunk_number+=1
-            updated_chunk_output.append(updated_chunk)
-        print(updated_chunk_output)
+        #Send the list of chunks ai output to get a merged output
         if run_open_ai:
                 client = AzureChatOpenAI(
                     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -470,7 +383,7 @@ def contract_assist(contract_path):
                         {
                             "role": "user",
                             "content": f""" 
-                                This is the list containg all the json data for this company, {updated_chunk_output}.
+                                This is the list containg all the json data for this company, {chunk_ai_output}.
                                 Merge them and return a single json data like the one in the list. The response must contain only the final JSON output, with no additional text, explanations, or formatting.                 
                             """
                         }
@@ -482,22 +395,56 @@ def contract_assist(contract_path):
                 print("#####")
 
                 message = response.content
-                with open("final_json_output.txt", "w", encoding="utf-8") as f:
+                with open("./Output/final_json_output.txt", "w", encoding="utf-8") as f:
                     f.write(str(message))
                 output_msg = json_repair.loads(message)
-                for data_entry in output_msg:
-                    # Check if the field exists in masking_values
-                    if data_entry["Field"] in original_mapping:
-                        # Replace the value with the masked value
-                        data_entry["Value"] = original_mapping[data_entry["Field"]]
 
-                with open("final_remapped_json_output.txt", "w", encoding="utf-8") as f:
+                
+                if len(output_msg) == 48:
+                    print("perfect amount")
+                    first_name = next((entry["Value"] for entry in output_msg if entry["Field"] == "Customer Contact First Name"), None)
+                    last_name = next((entry["Value"] for entry in output_msg if entry["Field"] == "Customer Contact Last Name"), None)
+                    full_name = f"{first_name} {last_name}" if first_name and last_name else None
+
+                    reverse_mapping = {v: k for k, v in mapping.items()}
+                    for entry in output_msg:
+                        field_name = entry["Field"]
+                        if field_name in fields_to_unmask:
+                            if entry['Value'] in reverse_mapping:
+                                entry['Value'] = reverse_mapping[entry['Value']]
+                                print(entry['Value'])
+                            elif field_name in ["Customer Contact First Name", "Customer Contact Last Name"]:
+                                if full_name and full_name in reverse_mapping:
+                                    # Get the original full name from reverse_mapping
+                                    original_full_name = reverse_mapping[full_name]
+                                    original_parts = original_full_name.split(" ", 1)  # Split into first and last
+
+                                    if field_name == "Customer Contact First Name":
+                                        entry["Value"] = original_parts[0]  # Take first part
+                                        print(f"Updated First Name: {entry['Value']}")
+                                    elif field_name == "Customer Contact Last Name" and len(original_parts) > 1:
+                                        entry["Value"] = original_parts[1]  # Take second part
+                                        print(f"Updated Last Name: {entry['Value']}")
+                            elif field_name == "Past Use Asset":
+                                original_values = [val.strip() for val in entry["Value"].split(",")]  # Split and strip whitespace
+                                
+                                # Replace if in reverse_mapping
+                                updated_values = [
+                                    reverse_mapping[val] if val in reverse_mapping else val
+                                    for val in original_values
+                                ]
+
+                                # Join back to a single comma-separated string
+                                entry["Value"] = ", ".join(updated_values)
+                else:
+                    print("Output Fields length did not match")
+
+                with open("./Output/final_remapped_json_output.txt", "w", encoding="utf-8") as f:
                     f.write(str(output_msg))
                 df = pd.DataFrame(output_msg)
-                df.to_excel(f'./ExcelOutput/{document_name}_final.xlsx', index=False)
-
-
-
+                df.to_excel(file_path, index=False)
+                        
+                print(f"Data has been exported to {file_path}")
         return file_path
 
     anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
@@ -569,7 +516,7 @@ def contract_assist(contract_path):
         print(response.content)
 
         message = response.content
-        with open("final_json_output.txt", "w", encoding="utf-8") as f:
+        with open("./Output/final_json_output.txt", "w", encoding="utf-8") as f:
             f.write(str(message))
         output_msg = json_repair.loads(message)
 
@@ -599,10 +546,23 @@ def contract_assist(contract_path):
                             elif field_name == "Customer Contact Last Name" and len(original_parts) > 1:
                                 entry["Value"] = original_parts[1]  # Take second part
                                 print(f"Updated Last Name: {entry['Value']}")
+                    elif field_name == "Past Use Asset":
+                                print("Value is ",entry["Value"])
+                                original_values = [val.strip() for val in entry["Value"].split(",")]  # Split and strip whitespace
+                                
+                                # Replace if in reverse_mapping
+                                updated_values = [
+                                    reverse_mapping[val] if val in reverse_mapping else val
+                                    for val in original_values
+                                ]
+
+                                # Join back to a single comma-separated string
+                                entry["Value"] = ", ".join(updated_values)
+                                print(f"Updated Past Use Asset: {entry['Value']}")                       
         else:
             print("Output Fields length did not match")
 
-        with open("final_remapped_json_output.txt", "w", encoding="utf-8") as f:
+        with open("./Output/final_remapped_json_output.txt", "w", encoding="utf-8") as f:
             f.write(str(output_msg))
         df = pd.DataFrame(output_msg)
         df.to_excel(file_path, index=False)
