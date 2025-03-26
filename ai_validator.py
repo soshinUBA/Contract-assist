@@ -91,7 +91,7 @@ class PDFBoundingBoxDrawer:
                         value_matches = page.search_for(value)
                         if value_matches:
                             for value_rect in value_matches:
-                                page.draw_rect(value_rect, color=(0, 0, 1), width=2)
+                                page.draw_rect(value_rect, color=(0, 1, 0), width=2)
                         else:
                             # Extract text from regions before marking as missing
                             found_field = any(
