@@ -15,7 +15,7 @@ import asyncio
 
 load_dotenv(".env")
 
-token_limit = 15000
+token_limit = 100000
 
 def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
