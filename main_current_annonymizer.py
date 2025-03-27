@@ -12,10 +12,10 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from collections import defaultdict
 import json_repair
 import asyncio
-
+import json
 load_dotenv(".env")
 
-token_limit = 100000
+token_limit = 15000
 
 def count_tokens(text, model="gpt-4o"):
     encoding = tiktoken.encoding_for_model(model)
@@ -439,8 +439,8 @@ def contract_assist(contract_path):
                 else:
                     print("Output Fields length did not match")
 
-                with open("./Output/final_remapped_json_output.txt", "w", encoding="utf-8") as f:
-                    f.write(str(output_msg))
+                with open("./Output/final_remapped_json_output.json", "w", encoding="utf-8") as f:
+                    json.dump(output_msg, f, indent=4, ensure_ascii=False)
                 df = pd.DataFrame(output_msg)
                 df.to_excel(file_path, index=False)
                         
@@ -562,8 +562,8 @@ def contract_assist(contract_path):
         else:
             print("Output Fields length did not match")
 
-        with open("./Output/final_remapped_json_output.txt", "w", encoding="utf-8") as f:
-            f.write(str(output_msg))
+        with open("./Output/final_remapped_json_output.json", "w", encoding="utf-8") as f:
+            json.dump(output_msg, f, indent=4, ensure_ascii=False)
         df = pd.DataFrame(output_msg)
         df.to_excel(file_path, index=False)
                 
