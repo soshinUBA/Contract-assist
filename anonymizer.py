@@ -10,8 +10,8 @@ from typing import Dict, Tuple, List, Set
 import logging
 import json
 from openai import OpenAI
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
-
+from helpers import get_model
+from prompt_loader import PROMPT_MANAGER
 
 load_dotenv()
 
@@ -26,14 +26,9 @@ class EntityAnonymizer:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
-        # Initialize Azure OpenAI client
-        self.client = AzureChatOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
-            openai_api_version=os.getenv("OPENAI_API_VERSION"),
-            temperature=0,
-        )
-
+        # Initialize OpenAI client
+        self.openai_api_key = os.getenv("openai-api-key")
+        self.client = get_model()
 
         # Load NLP models
         self.logger.info("Loading NLP models...")
@@ -86,34 +81,10 @@ class EntityAnonymizer:
         entity_list = "\n".join([f"- {entity}" for entity in entities])
 
         if entity_type == "PERSON":
-            prompt = f"""Below is a list of potential person names. Please analyze each name and return only the ones that appear to be valid person names. 
-            Return the response as a JSON object with a 'valid_names' key containing an array of valid names.
-
-            Potential names:
-            {entity_list}
-
-            Consider these guidelines:
-            - Names should follow common naming patterns
-            - Names should not be generic terms or descriptions
-            - Names should not be obvious placeholder text
-
-            Return only the JSON object with the 'valid_names' array."""
+            prompt = PROMPT_MANAGER.get_prompt('CREATE_VALIDATION_PROMOPT', 'person_prompt', entity_list=entity_list)
 
         else:  # ORG
-            prompt = f"""Below is a list of potential organization names. Please analyze each name and return only the ones that appear to be valid organization names.
-            Return the response as a JSON object with a 'valid_names' key containing an array of valid organization names.
-
-            Potential organizations:
-            {entity_list}
-
-            Consider these guidelines:
-            - Names should follow common organization naming patterns
-            - Names should not be generic terms or descriptions
-            - Names should not be obvious placeholder text
-            - Exclude font names, court names, management departments, and department names—these are **not** considered valid organization names.
-
-
-            Return only the JSON object with the 'valid_names' array."""
+            prompt = PROMPT_MANAGER.get_prompt('CREATE_VALIDATION_PROMOPT', 'org_prompt', entity_list=entity_list)
 
         return prompt
 
