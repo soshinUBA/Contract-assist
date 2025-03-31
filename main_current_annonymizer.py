@@ -356,7 +356,7 @@ def chunk_process(pdf_documents, document_name, token_limit_value):
 
 def contract_assist(contract_path):
     """Main function to process contract documents and extract fields."""
-    token_limit_value = 15000
+    token_limit_value = 100000
     try:
         # Check token limit
         token_text = PROMPT_MANAGER.get_prompt('FIELD_EXTRACTION', 'content')

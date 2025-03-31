@@ -15,4 +15,9 @@ extracted_table_output.txt
 output.txt
 Extras/
 /Contracts_new/
-__pycache__
+venv
+output_directory/
+__pycache__/
+validated_directory/
+contract_anonymized.txt
+contract_b4.txt
