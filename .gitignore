@@ -1,6 +1,7 @@
 .DS_Store
 .venv
 .venv/*
+venv/
 .idea/
 *.pdf
 *.docx
@@ -15,9 +16,6 @@ output.txt
 Extras/
 /Contracts_new/
 venv
-Contracts/
-ExcelOutput/
-Output/
 output_directory/
 __pycache__/
 validated_directory/
@@ -25,3 +23,4 @@ contract_anonymized.txt
 contract_b4.txt
 /Global Order Management & Royalty
 /M00202119
+contract_b4.txt
