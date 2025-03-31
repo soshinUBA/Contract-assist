@@ -1,132 +1,123 @@
-import os
-import fitz  # PyMuPDF
-import pandas as pd
-import re
+import fitz
 import json
-
-class PDFBoundingBoxDrawer:
-    def __init__(self, pdf_folder, excel_path, base_output_dir):
-        self.pdf_folder = pdf_folder
-        self.pdf_paths = self.get_pdf_files()
-        self.excel_path = excel_path
-
-        # Create a unique output folder using the input folder's name
-        folder_name = os.path.basename(os.path.normpath(pdf_folder))  # Extract folder name
-        self.output_dir = os.path.join(base_output_dir, folder_name)
-        os.makedirs(self.output_dir, exist_ok=True)  # Create if it doesn’t exist
-
-        self.unmatched_data = {
-            "missing_pairs": set(),
-            "missing_values": set()
-        }
-
-    def get_pdf_files(self):
-        """Retrieve all PDF files from the specified folder."""
-        return [os.path.join(self.pdf_folder, f) for f in os.listdir(self.pdf_folder) if f.lower().endswith(".pdf")]
-
-    def format_number(self, value):
-        """Convert numeric values to a comma-separated format (e.g., 2500000 → 2,500,000)."""
-        if isinstance(value, (int, float)) or re.fullmatch(r"\d+", str(value)):
-            formatted_value = f"{int(value):,} "
-            return " 0 " if formatted_value.strip() == "0" else formatted_value
-        return value + " " if value.lower() in ["no", "yes"] else value
-
-    def extract_fields_and_values(self):
-        """Extract fields and values from Excel, formatting numbers properly."""
-        df = pd.read_excel(self.excel_path, header=None)
-        field_value_map = {}
-        for _, row in df.iterrows():
-            row_data = row.dropna().astype(str).str.strip().tolist()
-            if len(row_data) >= 2:
-                field = row_data[0]
-                value = self.format_number(row_data[1])
-                field_value_map[field] = value
-        return field_value_map
-
-    def normalize_text(self, text):
-        """Normalize text by converting to lowercase and stripping spaces."""
-        return text.strip().lower() if isinstance(text, str) else text
-
-    def draw_bounding_boxes_in_pdfs(self):
-        """Draw bounding boxes and track unmatched field-value pairs."""
-        if not self.pdf_paths:
-            print("No PDF files found in the folder.")
-            return []
-
-        field_value_map = self.extract_fields_and_values()
-        modified_pdfs = []
-
-        for pdf_path in self.pdf_paths:
-            print(f"Processing: {pdf_path}")  # Debugging output
-
-            doc = fitz.open(pdf_path)
-            for page in doc:
-                for field, value in field_value_map.items():
-                    normalized_field = self.normalize_text(field)
-                    normalized_value = self.normalize_text(value)
-
-                    field_matches = page.search_for(field)
-                    if field_matches:
-                        for field_rect in field_matches:
-                            page.draw_rect(field_rect, color=(1, 0, 0), width=2)
-
-                            # Adjust search region dynamically
-                            search_region = fitz.Rect(
-                                field_rect.x0, field_rect.y0, field_rect.x1 + 300, field_rect.y1 + 50
-                            )
-                            value_matches = page.search_for(value, clip=search_region)
-
-                            if value_matches:
-                                for value_rect in value_matches:
-                                    page.draw_rect(value_rect, color=(0, 1, 0), width=2)
-                            else:
-                                # Extract text from region before marking missing
-                                found_similar = any(
-                                    self.normalize_text(page.get_text("text", clip=v)) == normalized_value
-                                    for v in page.search_for(value)
-                                )
-                                if not found_similar:
-                                    self.unmatched_data["missing_values"].add((field, value.strip() if isinstance(value, str) else value))
+import os
+ 
+def format_number(value):
+    """Converts a numeric string to a comma-separated format (e.g., '1000' → '1,000')."""
+    return "{:,}".format(int(value)) if value.isdigit() else value
+ 
+def is_nearby(rect1, rect2, threshold=50):
+    """Check if two rectangles are nearby within a given threshold."""
+    return abs(rect1.y1 - rect2.y1) < threshold and abs(rect1.x0 - rect2.x0) < threshold
+ 
+def find_text_and_draw(pdf_path, json_path):
+    with open(json_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+ 
+    # Extract contract number for naming the output folder
+    contract_number = None
+    for item in data:
+        if item["Field"].lower() == "contract number":
+            contract_number = item["Value"].strip()
+            break
+ 
+    # Define the full output path
+    if contract_number:
+        contract_folder = contract_number
+        output_folder = os.path.join(contract_folder, "ai_validation")
+    else:
+        output_folder = "AI_Validation"  # Fallback if no contract number found
+ 
+    os.makedirs(output_folder, exist_ok=True)
+ 
+    # Store missing fields/values in categories
+    missing_data = {
+        "fields_found_but_values_missing": [],
+        "values_found_but_fields_missing": [],
+        "both_fields_and_values_missing": []
+    }
+ 
+    # Iterate through all PDFs in the folder
+    for pdf_file in os.listdir(pdf_path):
+        if pdf_file.endswith(".pdf"):
+            pdf_full_path = os.path.join(pdf_path, pdf_file)
+            doc = fitz.open(pdf_full_path)
+            found_items = {"fields": [], "values": []}
+ 
+            for item in data:
+                field = str(item["Field"]).strip()
+                value = str(item["Value"]).strip()
+                
+                # Append a space for "yes" and "no"
+                if field.lower() in ["yes", "no"]:
+                    field = f" {field} "
+                if value.lower() in ["yes", "no"]:
+                    value = f" {value} "
+ 
+                # Format numeric values with commas
+                value_with_commas = format_number(value)
+ 
+                field_found, value_found = False, False
+                
+                for page in doc:
+                    field_instances = page.search_for(field, quads=False)  # Find field
+                    for inst in field_instances:
+                        page.draw_rect(inst, color=(1, 0, 0), width=1.5)  # Red for fields
+                        found_items["fields"].append(field)
+                        field_found = True
+ 
+                    value_instances = []
+                    
+                    if value == "0":
+                        # Extract words from the page
+                        words = page.get_text("words")
+                        for w in words:
+                            if w[4] == "0":  # Check exact match
+                                zero_rect = fitz.Rect(w[:4])  # Get bounding box
+ 
+                                # Check if a field is nearby
+                                if any(is_nearby(zero_rect, fitz.Rect(f)) for f in field_instances):
+                                    page.draw_rect(zero_rect, color=(0, 1, 0), width=1.5)  # Green for `0`
+                                    value_instances.append(zero_rect)
                     else:
-                        value_matches = page.search_for(value)
-                        if value_matches:
-                            for value_rect in value_matches:
-                                page.draw_rect(value_rect, color=(0, 1, 0), width=2)
-                        else:
-                            # Extract text from regions before marking as missing
-                            found_field = any(
-                                self.normalize_text(page.get_text("text", clip=f)) == normalized_field
-                                for f in page.search_for(field)
-                            )
-                            found_value = any(
-                                self.normalize_text(page.get_text("text", clip=v)) == normalized_value
-                                for v in page.search_for(value)
-                            )
-
-                            if not found_field and not found_value:
-                                self.unmatched_data["missing_pairs"].add((field, value.strip() if isinstance(value, str) else value))
+                        # Search for value (both original and comma-separated versions)
+                        value_instances = page.search_for(value, quads=False) or page.search_for(value_with_commas, quads=False)
+ 
+                    for inst in value_instances:
+                        page.draw_rect(inst, color=(0, 1, 0), width=1.5)  # Green for values
+                        found_items["values"].append(value)
+                        value_found = True
+                
+                # Organize missing data into categories
+                if field_found and not value_found:
+                    missing_data["fields_found_but_values_missing"].append({
+                        "field": field.strip(),
+                        "value": value.strip()
+                    })
+                elif not field_found and value_found:
+                    missing_data["values_found_but_fields_missing"].append({
+                        "field": field.strip(),
+                        "value": value.strip()
+                    })
+                elif not field_found and not value_found:
+                    missing_data["both_fields_and_values_missing"].append({
+                        "field": field.strip(),
+                        "value": value.strip()
+                    })
             
-            output_pdf_path = os.path.join(self.output_dir, os.path.basename(pdf_path))
+            # Save the modified PDF with bounding boxes
+            output_pdf_path = os.path.join(output_folder, pdf_file)
             doc.save(output_pdf_path)
             doc.close()
-            modified_pdfs.append(output_pdf_path)
-
-        unmatched_json_path = os.path.join(self.output_dir, "unmatched_data.json")
-        with open(unmatched_json_path, "w") as json_file:
-            json.dump({
-                "missing_pairs": list(self.unmatched_data["missing_pairs"]),
-                "missing_values": list(self.unmatched_data["missing_values"])
-            }, json_file, indent=4, default=str)
-
-        return modified_pdfs
-
-# Example Usage
-if __name__ == "__main__":
-    pdf_folder = "Contracts/Global Order Management & Royalty/English/Folders/M00202119"  # Folder containing PDFs
-    excel_file = "ExcelOutput/COMPLETED Tapestry, Inc  Other 07 15 2021_data.xlsx"
-    base_output_folder = "validated_directory"  # Base directory for all outputs
-
-    drawer = PDFBoundingBoxDrawer(pdf_folder, excel_file, base_output_folder)
-    modified_pdfs = drawer.draw_bounding_boxes_in_pdfs()
-
-    print("Modified PDFs saved at:", drawer.output_dir)
+ 
+    # Save missing fields/values to a JSON file with organized structure
+    json_output_path = os.path.join(output_folder, "missing_data.json")
+    with open(json_output_path, "w", encoding="utf-8") as json_file:
+        json.dump(missing_data, json_file, indent=4)
+ 
+    print(f"Processing complete. Annotated PDFs saved in '{output_folder}'. Missing data saved in '{json_output_path}'.")
+ 
+# Example usage
+pdf_folder = "Global Order Management & Royalty/English/Folders/M00200233"
+json_file = "ExcelOutput/final_remapped_json_output.json"
+find_text_and_draw(pdf_folder, json_file)
