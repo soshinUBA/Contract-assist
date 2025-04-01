@@ -44,7 +44,10 @@ def find_text_and_draw(pdf_path, json_path):
         if pdf_file.endswith(".pdf"):
             pdf_full_path = os.path.join(pdf_path, pdf_file)
             doc = fitz.open(pdf_full_path)
-            found_items = {"fields": [], "values": []}
+
+            # Track found fields and values to ensure missing ones are correctly identified
+            found_fields = set()
+            found_values = set()
 
             # Flag to track contract number presence
             contract_number_found = False  
@@ -67,11 +70,13 @@ def find_text_and_draw(pdf_path, json_path):
                 
                 # Iterate through all pages
                 for page in doc:
-                    field_instances = page.search_for(field, quads=False)  # Find field
-                    for inst in field_instances:
-                        page.draw_rect(inst, color=(1, 0, 0), width=1.5)  # Red for fields
-                        found_items["fields"].append(field)
+                    # Search for field
+                    field_instances = page.search_for(field, quads=False)  
+                    if field_instances:
                         field_found = True
+                        found_fields.add(field)
+                        for inst in field_instances:
+                            page.draw_rect(inst, color=(1, 0, 0), width=1.5)  # Red for fields
 
                     value_instances = []
                     
@@ -87,38 +92,24 @@ def find_text_and_draw(pdf_path, json_path):
                                     w2[4] for w2 in words if is_nearby(fitz.Rect(w2[:4]), word_rect, threshold=5)
                                 ]
                                 if not any(word_text in w2 and word_text != w2 for w2 in surrounding_words):
+                                    value_found = True
+                                    found_values.add(value)
                                     page.draw_rect(word_rect, color=(0, 1, 0), width=1.5)  # Green for value
-                                    value_instances.append(word_rect)
 
                     else:
                         # Search for value (both original and comma-separated versions)
                         value_instances = page.search_for(value, quads=False) or page.search_for(value_with_commas, quads=False)
-
-                    for inst in value_instances:
-                        page.draw_rect(inst, color=(0, 1, 0), width=1.5)  # Green for values
-                        found_items["values"].append(value)
-                        value_found = True
+                        if value_instances:
+                            value_found = True
+                            found_values.add(value)
+                            for inst in value_instances:
+                                page.draw_rect(inst, color=(0, 1, 0), width=1.5)  # Green for values
                 
-                # Organize missing data into categories
+                # Handle "Contract Number" logic separately
                 if field.lower() == "contract number":
                     if field_found:
                         contract_number_found = True  # Contract Number found, no need to search for "Contract #"
-                else:
-                    if field_found and not value_found:
-                        missing_data["fields_found_but_values_missing"].append({
-                            "field": field.strip(), 
-                            "value": value.strip()
-                        })
-                    elif not field_found and value_found:
-                        missing_data["values_found_but_fields_missing"].append({
-                            "field": field.strip(), 
-                            "value": value.strip()
-                        })
-                    elif not field_found and not value_found:
-                        missing_data["both_fields_and_values_missing"].append({
-                            "field": field.strip(), 
-                            "value": value.strip()
-                        })
+                    continue  
 
             # If contract number was not found, search for "Contract #"
             if not contract_number_found:
@@ -134,12 +125,46 @@ def find_text_and_draw(pdf_path, json_path):
             doc.save(output_pdf_path)
             doc.close()
 
+    # Identify truly missing fields and values
+    for item in data:
+        field = item["Field"].strip()
+        value = item["Value"].strip()
+
+        if field.lower() == "contract number":
+            continue  # Skip contract number logic, already handled
+
+        field_found = field in found_fields
+        value_found = value in found_values
+
+        # Only write missing data to JSON
+        if field_found and not value_found:
+            missing_data["fields_found_but_values_missing"].append({
+                "field": field, 
+                "value": value
+            })
+        elif not field_found and value_found:
+            missing_data["values_found_but_fields_missing"].append({
+                "field": field, 
+                "value": value
+            })
+        elif not field_found and not value_found:
+            missing_data["both_fields_and_values_missing"].append({
+                "field": field, 
+                "value": value
+            })
+
     # Save missing fields/values to a JSON file with organized structure
     json_output_path = os.path.join(output_folder, "missing_data.json")
-    with open(json_output_path, "w", encoding="utf-8") as json_file:
-        json.dump(missing_data, json_file, indent=4)
 
-    print(f"Processing complete. Annotated PDFs saved in '{output_folder}'. Missing data saved in '{json_output_path}'.")
+    # Only write JSON if there is actual missing data
+    if any(missing_data.values()):  
+        with open(json_output_path, "w", encoding="utf-8") as json_file:
+            json.dump(missing_data, json_file, indent=4)
+        print(f"Missing data saved in '{json_output_path}'.")
+    else:
+        print("No missing data. JSON file was not created.")
+
+    print(f"Processing complete. Annotated PDFs saved in '{output_folder}'.")
 
 # Example usage
 pdf_folder = "Global Order Management & Royalty/English/Folders/M00202119"
