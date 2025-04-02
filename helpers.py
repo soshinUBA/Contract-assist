@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 import os
 import tiktoken
 import docx
+import re
+import string
 load_dotenv()
 
 def get_model():
@@ -61,3 +63,19 @@ def save_text_to_file(text, file_path):
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(text)
     return file_path
+
+def is_scanned_pdf_from_text(extracted_text, cid_threshold=5):
+    scanned_pages = 0
+    pages = extracted_text.split("\n\nPage ")
+
+    for page in pages:
+        page_content = page.strip()
+        if page_content.lower().startswith("page "):
+            page_content = page_content[6:].strip()
+
+        if len(page_content) < 200:
+            scanned_pages += 1
+
+    cid_count = len(re.findall(r'\(cid:\d+\)', extracted_text))
+
+    return scanned_pages > 2 or cid_count >= cid_threshold

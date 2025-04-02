@@ -3,9 +3,9 @@ import regex as re
 import os
 from dotenv import load_dotenv
 from anonymizer import EntityAnonymizer
-from pdf_extractor import extract_text_from_pdf
+from pdf_extractor import extract_text_from_pdf, extract_text
 from prompt_loader import PROMPT_MANAGER
-from helpers import count_tokens, get_pdfs_from_folder, extract_docx_content, get_document_name, save_text_to_file, get_model
+from helpers import count_tokens, get_pdfs_from_folder, extract_docx_content, get_document_name, save_text_to_file, get_model, is_scanned_pdf_from_text
 import json_repair
 import asyncio
 import json
@@ -14,18 +14,30 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 load_dotenv(".env")
 
 def process_pdfs(pdf_documents):
-    """Extract text from PDFs and verify content length."""
+    """Extract text from PDFs, handling both regular and scanned PDFs"""
     all_text = ""
     
     print("############# Starting PDF Processing ######################")
     try:
         for pdf_document in pdf_documents:
             try:
+                # First try regular text extraction
                 text = extract_text_from_pdf(pdf_document)
-                if len(text) <= 800:
-                    print(f"Image file detected or minimal text in {pdf_document}, skipping")
+                
+                # Check if it's likely a scanned PDF
+                if is_scanned_pdf_from_text(text):
+                    print(f"Scanned PDF detected in {pdf_document}, attempting OCR...")
+                    text = extract_text(pdf_document)
+                    if not text:
+                        print(f"OCR extraction failed for {pdf_document}")
+                        continue
+                
+                if not text:
+                    print(f"No text extracted from {pdf_document}, skipping")
                     continue
-                all_text += text
+                    
+                all_text += text + "\n\n"
+                
             except Exception as e:
                 print(f"Error processing PDF {pdf_document}: {str(e)}")
                 continue
@@ -38,7 +50,7 @@ def process_pdfs(pdf_documents):
     except Exception as e:
         print(f"Error in PDF processing: {str(e)}")
         return None
-
+    
 def anonymize_contract_text(all_text, document_name):
     """Anonymize the contract text and save the results."""
     try:
