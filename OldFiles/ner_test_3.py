@@ -10,8 +10,6 @@ from typing import Dict, Tuple, List, Set
 import logging
 import json
 from openai import OpenAI
-from helpers import get_model
-from prompt_loader import PROMPT_MANAGER
 
 load_dotenv()
 
@@ -28,7 +26,7 @@ class EntityAnonymizer:
 
         # Initialize OpenAI client
         self.openai_api_key = os.getenv("openai-api-key")
-        self.client = get_model()
+        self.client = OpenAI(api_key=self.openai_api_key)
 
         # Load NLP models
         self.logger.info("Loading NLP models...")
@@ -81,10 +79,34 @@ class EntityAnonymizer:
         entity_list = "\n".join([f"- {entity}" for entity in entities])
 
         if entity_type == "PERSON":
-            prompt = PROMPT_MANAGER.get_prompt('CREATE_VALIDATION_PROMOPT', 'person_prompt', entity_list=entity_list)
+            prompt = f"""Below is a list of potential person names. Please analyze each name and return only the ones that appear to be valid person names. 
+            Return the response as a JSON object with a 'valid_names' key containing an array of valid names.
+
+            Potential names:
+            {entity_list}
+
+            Consider these guidelines:
+            - Names should follow common naming patterns
+            - Names should not be generic terms or descriptions
+            - Names should not be obvious placeholder text
+
+            Return only the JSON object with the 'valid_names' array."""
 
         else:  # ORG
-            prompt = PROMPT_MANAGER.get_prompt('CREATE_VALIDATION_PROMOPT', 'org_prompt', entity_list=entity_list)
+            prompt = f"""Below is a list of potential organization names. Please analyze each name and return only the ones that appear to be valid organization names.
+            Return the response as a JSON object with a 'valid_names' key containing an array of valid organization names.
+
+            Potential organizations:
+            {entity_list}
+
+            Consider these guidelines:
+            - Names should follow common organization naming patterns
+            - Names should not be generic terms or descriptions
+            - Names should not be obvious placeholder text
+            - Exclude font names, court names, management departments, and department names—these are **not** considered valid organization names.
+
+
+            Return only the JSON object with the 'valid_names' array."""
 
         return prompt
 
@@ -99,19 +121,20 @@ class EntityAnonymizer:
             List[str]: List of validated entity names
         """
         try:
-            response = self.client.invoke(
-                input=[
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
                     {"role": "system",
                      "content": "You are a helpful assistant that validates entity names. Respond only with a JSON object containing a 'valid_names' array."},
                     {"role": "user", "content": prompt}
                 ],
+                temperature=0,
                 response_format={"type": "json_object"}
             )
-            print("RESPONSE FROM AI: ",response)
+
             # Parse the JSON response
-            json_str = response.content
-            parsed_response = json.loads(json_str)
-            return parsed_response.get('valid_names', [])
+            validated_entities = json.loads(response.choices[0].message.content)
+            return validated_entities.get('valid_names', [])
 
         except Exception as e:
             self.logger.error(f"Error in LLM validation: {str(e)}")
@@ -145,12 +168,25 @@ class EntityAnonymizer:
 
             # Filter entities and create final list
             final_entities = []
+
+            # 5. Add EMAIL and PHONE entities from the initial extraction.
             for entity in initial_entities:
-                if (entity['label'] == 'PERSON' and entity['text'] in valid_persons) or \
-                        (entity['label'] == 'ORG' and entity['text'] in valid_orgs) or \
-                        entity['label'] in ['EMAIL', 'PHONE']:
+                if entity['label'] in ['EMAIL']:
                     self._add_entity(final_entities, entity['text'], entity['label'],
                                      entity['start'], entity['end'])
+
+            # 6. For each validated PERSON, search the entire text for all occurrences.
+            for person in valid_persons:
+                # Use regex with word boundaries to match whole names (adjust as needed).
+                pattern = r'\b' + re.escape(person) + r'\b'
+                for match in re.finditer(pattern, text):
+                    self._add_entity(final_entities, person, 'PERSON', match.start(), match.end())
+
+            # 7. Similarly, for each validated ORG, search the entire text.
+            for org in valid_orgs:
+                pattern = r'\b' + re.escape(org) + r'\b'
+                for match in re.finditer(pattern, text):
+                    self._add_entity(final_entities, org, 'ORG', match.start(), match.end())
 
             # Add phone numbers
             phone_entities = self._extract_phone_numbers(text)
@@ -169,21 +205,14 @@ class EntityAnonymizer:
 
     # The rest of the methods remain unchanged as previously provided
 
-    def clear_mappings(self) -> None:
-        """Clear all stored mappings and used dummy values."""
-        self.entity_mapping.clear()
-        for entity_type in self.used_dummy_values:
-            self.used_dummy_values[entity_type].clear()
-
-
     def _load_models(self) -> None:
         """Load required NLP models."""
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                "xlm-roberta-large-finetuned-conll03-english"
+                "dbmdz/bert-large-cased-finetuned-conll03-english"
             )
             self.model = AutoModelForTokenClassification.from_pretrained(
-                "xlm-roberta-large-finetuned-conll03-english"
+                "dbmdz/bert-large-cased-finetuned-conll03-english"
             )
             self.nlp = pipeline("ner", model=self.model, tokenizer=self.tokenizer,
                                 aggregation_strategy="simple")
@@ -270,66 +299,24 @@ class EntityAnonymizer:
         raise ValueError(f"Could not generate unique dummy value after {max_attempts} attempts")
 
     def _extract_phone_numbers(self, text: str) -> List[dict]:
-        """Extract phone numbers from text for multiple countries including US, Germany, Portugal, China, and Japan.
-
-        Formats supported:
-        US: +1 XXX-XXX-XXXX, (XXX) XXX-XXXX, XXX-XXX-XXXX
-        Germany: +49 XXX XXXXXXX, +49-XXX-XXXXXXX, 0XXX-XXXXXXX
-        Portugal: +351 XXX XXX XXX, +351-XXX-XXX-XXX
-        China: +86 XXX XXXX XXXX, +86-XXX-XXXX-XXXX
-        Japan: +81 XX XXXX XXXX, +81-XX-XXXX-XXXX
-        """
+        """Extract phone numbers from text."""
+        # Comprehensive phone pattern matching various formats
         phone_patterns = [
-            # US Patterns
-            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # 123-456-7890
+            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # 123-456-7890 or 123.456.7890 or 1234567890
             r'\(\d{3}\)\s*\d{3}[-.]?\d{4}\b',  # (123) 456-7890
-            r'\+1[-.\s]?\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # +1-123-456-7890
-
-            # German Patterns
-            r'\+49[-.\s]?\d{3}[-.\s]?\d{7}\b',  # +49 123 4567890
-            r'0\d{3}[-.\s]?\d{7}\b',  # 0123 4567890
-            r'\+49[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +49 1234 5678 9012 (mobile)
-            r'\+49[-.\s]?\d{2}[-.\s]?\d{4}[-.\s]?\d{4}\b',
-
-            # Portuguese Patterns
-            r'\+351[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{3}\b',  # +351 123 456 789
-            r'00351[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{3}\b',  # 00351 123 456 789
-
-            # Chinese Patterns
-            r'\+86[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +86 123 4567 8901
-            r'00886[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # 00886 123 4567 8901
-
-            # Japanese Patterns
-            r'\+81[-.\s]?\d{2}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # +81 12 3456 7890
-            r'0\d{1,2}[-.\s]?\d{4}[-.\s]?\d{4}\b',  # 012-3456-7890 or 0123-456-7890
+            r'\+\d{1,3}[-.]?\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # +1-123-456-7890
+            r'\b\d{3}[-.]?\d{4}\b'  # 123-4567 or 1234567
         ]
-
-        def identify_country(phone_number: str) -> str:
-            """Identify the country based on the phone number pattern."""
-            if phone_number.startswith('+1') or len(
-                    phone_number.replace('-', '').replace('.', '').replace(' ', '')) == 10:
-                return "US"
-            elif '+49' in phone_number or phone_number.startswith('0'):
-                return "GERMANY"
-            elif '+351' in phone_number or '00351' in phone_number:
-                return "PORTUGAL"
-            elif '+86' in phone_number or '00886' in phone_number:
-                return "CHINA"
-            elif '+81' in phone_number or (phone_number.startswith('0') and len(phone_number) >= 10):
-                return "JAPAN"
-            return "UNKNOWN"
 
         phone_entities = []
         for pattern in phone_patterns:
             for match in re.finditer(pattern, text):
                 phone_number = match.group()
-                country = identify_country(phone_number)
                 phone_entities.append({
                     "text": phone_number,
                     "start": match.start(),
                     "end": match.end(),
-                    "label": "PHONE",
-                    "country": country
+                    "label": "PHONE"
                 })
 
         return phone_entities
@@ -345,7 +332,7 @@ class EntityAnonymizer:
 
             for entity in ner_results:
                 if entity['entity_group'] in ['PER', 'ORG']:
-                    if entity.get('score', 1.0) < 0.85:
+                    if entity.get('score', 1.0) < 0.90:
                         continue
 
                     entity_text = entity['word'].strip(" #")
@@ -408,83 +395,63 @@ class EntityAnonymizer:
         return unique_entities
 
     def _apply_mappings(self, text: str, entities: List[dict]) -> str:
-        """Replace all instances of detected entities, even when mixed with special characters."""
+        """Apply entity mappings to create anonymized text."""
+        sorted_entities = sorted(entities, key=lambda x: x['start'], reverse=True)
         modified_text = text
 
-        # Convert entity mapping into a dictionary
-        entity_replacements = {entity['text']: entity['dummy_value'] for entity in entities}
+        for entity in sorted_entities:
+            modified_text = (modified_text[:entity['start']] +
+                             entity['dummy_value'] +
+                             modified_text[entity['end']:])
 
-        # Sort entity names from longest to shortest to avoid partial replacements
-        sorted_entities = sorted(entity_replacements.keys(), key=len, reverse=True)
-
-        for original_text in sorted_entities:
-            dummy_value = entity_replacements[original_text]
-
-            # New regex pattern: match the entity even if attached to special characters
-            # pattern = rf'(\W|^){re.escape(original_text)}(\W|$)'
-
-            # Replace all occurrences in the text, keeping surrounding characters unchanged
-            # modified_text = re.sub(pattern, rf'\1{dummy_value}\2', modified_text)
-            
-            modified_text = modified_text.replace(original_text, dummy_value,)
- 
         return modified_text
-        
-    
+
     def clear_mappings(self) -> None:
         """Clear all stored mappings and used dummy values."""
         self.entity_mapping.clear()
         for entity_type in self.used_dummy_values:
             self.used_dummy_values[entity_type].clear()
 
-# Singleton lazy initializer
-_entity_anonymizer_instance = None
-
-def get_entity_anonymizer():
-    global _entity_anonymizer_instance
-    if _entity_anonymizer_instance is None:
-        _entity_anonymizer_instance = EntityAnonymizer()
-    return _entity_anonymizer_instance
 
 # Example usage
-# if __name__ == "__main__":
-#     # File path
-#     file_path = "contract_b4.txt"
+if __name__ == "__main__":
+    # File path
+    file_path = "contracts_extracted_text/BitSight Technologies-M00212805.txt"
 
-#     # Read the original text
-#     with open(file_path, "r", encoding="utf-8") as file:
-#         txt = file.read()
+    # Read the original text
+    with open(file_path, "r", encoding="utf-8") as file:
+        txt = file.read()
 
-#     # Initialize anonymizer
-#     anonymizer = EntityAnonymizer()
+    # Initialize anonymizer
+    anonymizer = EntityAnonymizer()
 
-#     try:
-#         # Anonymize text
-#         anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(txt)
+    try:
+        # Anonymize text
+        anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(txt)
 
-#         print("Original Text:")
-#         print(txt)
+        print("Original Text:")
+        print(txt)
 
-#         print("\nValidated Entities:")
-#         print("Persons:", validated_entities['PERSON'])
-#         print("Organizations:", validated_entities['ORG'])
+        print("\nValidated Entities:")
+        print("Persons:", validated_entities['PERSON'])
+        print("Organizations:", validated_entities['ORG'])
 
-#         print("\nAnonymized Text:")
-#         print(anonymized_text)
+        print("\nAnonymized Text:")
+        print(anonymized_text)
 
-#         print("\nMapping Dictionary:")
-#         for original, dummy in mapping.items():
-#             print(f"{original} → {dummy}")
+        print("\nMapping Dictionary:")
+        for original, dummy in mapping.items():
+            print(f"{original} → {dummy}")
 
-#         # Generate the anonymized file path
-#         base, ext = os.path.splitext(file_path)
-#         anonymized_file_path = f"{base}_anonymized{ext}"
+        # Generate the anonymized file path
+        base, ext = os.path.splitext(file_path)
+        anonymized_file_path = f"{base}_anonymized{ext}"
 
-#         # Save the anonymized text
-#         with open(anonymized_file_path, "w", encoding="utf-8") as file:
-#             file.write(anonymized_text)
+        # Save the anonymized text
+        with open(anonymized_file_path, "w", encoding="utf-8") as file:
+            file.write(anonymized_text)
 
-#         print(f"\nAnonymized text saved at: {anonymized_file_path}")
+        print(f"\nAnonymized text saved at: {anonymized_file_path}")
 
-#     except Exception as e:
-#         print(f"Error during anonymization: {str(e)}")
+    except Exception as e:
+        print(f"Error during anonymization: {str(e)}")

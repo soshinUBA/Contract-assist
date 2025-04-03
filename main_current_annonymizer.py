@@ -2,7 +2,7 @@ import pandas as pd
 import regex as re
 import os
 from dotenv import load_dotenv
-from anonymizer import EntityAnonymizer
+from anonymizer import get_entity_anonymizer
 from pdf_extractor import extract_text_from_pdf, extract_text
 from prompt_loader import PROMPT_MANAGER
 from helpers import count_tokens, get_pdfs_from_folder, extract_docx_content, get_document_name, save_text_to_file, get_model, is_scanned_pdf_from_text
@@ -54,7 +54,8 @@ def process_pdfs(pdf_documents):
 def anonymize_contract_text(all_text, document_name):
     """Anonymize the contract text and save the results."""
     try:
-        anonymizer = EntityAnonymizer()
+        anonymizer = get_entity_anonymizer()
+        anonymizer.clear_mappings()
         anonymized_text, mapping, validated_entities = anonymizer.anonymize_text(all_text)
         
         # Save anonymized text and mapping
