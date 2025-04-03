@@ -167,6 +167,6 @@ def find_text_and_draw(pdf_path, json_path):
     print(f"Processing complete. Annotated PDFs saved in '{output_folder}'.")
 
 # Example usage
-pdf_folder = "Global Order Management & Royalty/English/Folders/M00202119"
-json_file = "Output/final_remapped_json_output.json"
-find_text_and_draw(pdf_folder, json_file)
+# pdf_folder = "Global Order Management & Royalty/English/Folders/M00202119"
+# json_file = "Output/final_remapped_json_output.json"
+# find_text_and_draw(pdf_folder, json_file)

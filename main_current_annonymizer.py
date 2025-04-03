@@ -10,7 +10,7 @@ import json_repair
 import asyncio
 import json
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-
+from ai_validator import find_text_and_draw
 load_dotenv(".env")
 
 def process_pdfs(pdf_documents):
@@ -180,7 +180,7 @@ def get_ai_merge_response(list_of_chunk_output):
         print(f"Error in AI processing: {str(e)}")
         return None
 
-def parse_response_to_df(response_content, mapping=None):
+def parse_response_to_df(response_content, document_name, mapping=None):
     fields_to_unmask = ["Customer Name", "Customer Contact Email", "Customer Contact First Name", "Customer Contact Last Name", "Primary Licensed Monotype Fonts User Email", "Binding Obligations(Sub-licensing/Transfer Entities)","Past Use Asset"]
     try:
         if not response_content:
@@ -222,7 +222,7 @@ def parse_response_to_df(response_content, mapping=None):
                         # Join back to a single comma-separated string
                         entry["Value"] = ", ".join(updated_values)
                         print(f"Updated Past Use Asset: {entry['Value']}")
-                        with open("./Output/final_remapped_json_output.json", "w", encoding="utf-8") as f:
+                        with open(f"./ExcelOutput/{document_name}.json", "w", encoding="utf-8") as f:
                             json.dump(output_msg, f, indent=4, ensure_ascii=False)
                         df = pd.DataFrame(output_msg)
                         return df
@@ -356,7 +356,7 @@ def chunk_process(pdf_documents, document_name, token_limit_value):
             return None
         
         # Parse response into DataFrame
-        df = parse_response_to_df(response.content, mapping)
+        df = parse_response_to_df(response.content, document_name, mapping)
         
         # Save outputs
         excel_path = save_output_files(response.content, document_name, df)
@@ -432,11 +432,14 @@ def contract_assist(contract_path):
             return None
         
         # Parse response into DataFrame
-        df = parse_response_to_df(response.content, mapping)
+        df = parse_response_to_df(response.content, document_name, mapping)
         
         # Save outputs
         excel_path = save_output_files(response.content, document_name, df)
         
+        #Start Ai Validation
+        print("Starting AI Validation")
+        find_text_and_draw(contract_path, f"./ExcelOutput/{document_name}.json")
         return excel_path
     except Exception as e:
         print(f"Unhandled error in contract_assist: {str(e)}")
