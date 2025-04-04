@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from anonymizer import get_entity_anonymizer
 from pdf_extractor import extract_text_from_pdf, extract_text
 from prompt_loader import PROMPT_MANAGER
-from helpers import count_tokens, get_pdfs_from_folder, extract_docx_content, get_document_name, save_text_to_file, get_model, is_scanned_pdf_from_text
+from helpers import count_tokens, get_pdfs_from_folder, extract_docx_content, get_document_name, save_text_to_file, get_model, is_scanned_pdf_from_text, upload_contract_to_s3
 import json_repair
 import asyncio
 import json
@@ -371,6 +371,7 @@ def contract_assist(contract_path):
     """Main function to process contract documents and extract fields."""
     token_limit_value = 100000
     try:
+        contract_id = os.path.basename(os.path.normpath(contract_path))
         # Check token limit
         token_text = PROMPT_MANAGER.get_prompt('FIELD_EXTRACTION', 'content')
         
@@ -439,7 +440,20 @@ def contract_assist(contract_path):
         
         #Start Ai Validation
         print("Starting AI Validation")
-        find_text_and_draw(contract_path, f"./ExcelOutput/{document_name}.json")
+        find_text_and_draw(pdf_path=contract_path, json_path=f"./ExcelOutput/{document_name}.json", contract_id=contract_id)
+        json_file_path = f"./ExcelOutput/{document_name}.json"
+        validation_folder_path = os.path.join(contract_id, "ai_validation") if contract_id else "ai_validation"
+        # Upload to S3 (using the same contract_id)
+        upload_success = upload_contract_to_s3(
+            contract_path=contract_path,
+            contract_id=contract_id,
+            excel_file_path=excel_path,
+            json_file_path=json_file_path,
+            validation_folder_path=validation_folder_path
+        )
+        
+        if not upload_success:
+            print("Warning: Some files failed to upload to S3")
         return excel_path
     except Exception as e:
         print(f"Unhandled error in contract_assist: {str(e)}")

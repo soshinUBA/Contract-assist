@@ -10,24 +10,24 @@ def is_nearby(rect1, rect2, threshold=50):
     """Check if two rectangles are nearby within a given threshold."""
     return abs(rect1.y1 - rect2.y1) < threshold and abs(rect1.x0 - rect2.x0) < threshold
 
-def find_text_and_draw(pdf_path, json_path):
+def find_text_and_draw(pdf_path, json_path, contract_id=None):
     # Read JSON file
     with open(json_path, "r", encoding="utf-8") as file:
         data = json.load(file)
 
-    # Extract contract number for naming the output folder
-    contract_number = None
-    for item in data:
-        if item["Field"].lower() == "contract number":
-            contract_number = item["Value"].strip()
-            break
-
-    # Define the full output path
-    if contract_number:
-        contract_folder = contract_number  # Folder named after contract number
-        output_folder = os.path.join(contract_folder, "ai_validation")
+    # Use contract_id if provided, otherwise fall back to JSON contract number
+    output_folder = "ai_validation"  # Default fallback
+    
+    if contract_id:  # Prefer the contract_id from path
+        output_folder = os.path.join(contract_id, "ai_validation")
     else:
-        output_folder = "ai_validation"  # Fallback if no contract number found
+        # Fallback to JSON contract number (original behavior)
+        for item in data:
+            if item["Field"].lower() == "contract number":
+                contract_number = item["Value"].strip()
+                if contract_number:
+                    output_folder = os.path.join(contract_number, "ai_validation")
+                break
 
     # Ensure folders exist
     os.makedirs(output_folder, exist_ok=True)
